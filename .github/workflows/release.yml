@@ -20,19 +20,17 @@ jobs:
         run: pip install -e "./mcp[dev]"
 
       # skill/build_skill.py's hand-authored content (SKILL.md, templates/,
-      # scripts/, references/ASSET.md) lives only inside the most recently
-      # committed .skill zips - skill/cascade-script-writer{,-lite}/ are
-      # gitignored working directories, not tracked source. Seed them from
-      # the latest tracked build before re-syncing/validating against
-      # whatever cascade-cms-rest version this job just installed.
-      - name: Unpack latest skill bundles
+      # scripts/, references/asset_api.md) lives only inside the most recently
+      # committed .skill zip - skill/cascade-script-writer/ is a gitignored
+      # working directory, not tracked source. Seed it from the latest
+      # tracked build before re-syncing/validating against whatever
+      # cascade-cms-rest version this job just installed.
+      - name: Unpack latest skill bundle
         run: |
           set -e
           LATEST_FULL=$(ls skill/cascade-script-writer-[0-9]*.skill | sort -V | tail -1)
-          LATEST_LITE=$(ls skill/cascade-script-writer-lite-*.skill | sort -V | tail -1)
-          echo "Unpacking $LATEST_FULL and $LATEST_LITE"
+          echo "Unpacking $LATEST_FULL"
           unzip -q "$LATEST_FULL" -d skill/
-          unzip -q "$LATEST_LITE" -d skill/
 
       - name: Lint
         run: ruff check .

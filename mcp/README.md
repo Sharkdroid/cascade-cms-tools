@@ -4,7 +4,7 @@ A local, read-only [MCP](https://modelcontextprotocol.io) server exposing a
 Hannon Hill Cascade CMS server to MCP clients (Claude Desktop, Claude Code,
 etc.), built on top of [`cascade-cms-rest`](https://pypi.org/project/cascade-cms-rest/).
 
-Seven tools, all read-only — no tool in this server can perform a write
+Six tools, all read-only — no tool in this server can perform a write
 operation, even indirectly:
 
 | Tool | Purpose |
@@ -16,13 +16,30 @@ operation, even indirectly:
 | `cascade_root_container_id` | The root container id (e.g. Data Definitions folder) for an asset type on a site |
 | `cascade_list_sites` | List every site on the server |
 
+`cascade_get_data_structure` and `cascade_get_page_config` are
+**schema-authoritative**: they resolve field/group/config names from the
+asset's *bound content type or data definition*, not by sampling the one
+asset instance you point them at — so the result is the full schema-valid
+set, not just whatever happens to be populated on that instance.
+
+This is a different, easily-confused thing from the *library's*
+`Asset.get_data_structure()` method (used inside generated scripts, not by
+this server) — that one is instance/leaf-only. See the skill's
+`references/asset_api.md` for that distinction, and note that this server is
+read-only by design: *writing* structured data still goes through the
+skill's script-writing path (see its `callback-structured-data-edit.py`
+template).
+
 ## Known limitation
 
-`cascade_get_data_structure` and `cascade_get_page_config` currently report
-field/group/config names by sampling the *one asset instance* you point them
-at — not the full schema-valid set the asset's type actually allows. See
-`MCP_IMPLEMENTATION_PLAN_REV.md` §7 in the `py-cascade-cms` repo for the
-deferred schema-authoritative design this is expected to move to.
+`resolve_data_definition()` (`src/cascade_cms_rest_mcp/resolution.py`)
+resolves a data-bound asset's data definition two ways: via
+`contentTypeId → contentType.dataDefinitionId` (confirmed against a real
+payload), and via a direct `dataDefinitionId` field on the asset itself
+(present in the code as a fallback, but not yet confirmed against any real
+fixture — harmless no-op if the field is absent). If you hit a data-bound
+asset where resolution fails unexpectedly, this direct-field path is the
+first thing to check.
 
 ## Configuration
 

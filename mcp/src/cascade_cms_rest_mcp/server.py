@@ -22,7 +22,7 @@ from cascade_cms.wrapper import CascadeWrapperBase
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from . import data_structure, errors, formatting, resolution
+from . import data_structure, errors, formatting, resolution, security
 from .config import cache_configuration, load_environment_variables
 
 mcp = MCPServer(
@@ -52,6 +52,17 @@ def _wrapper() -> CascadeWrapperBase:
     connection object doesn't.
     """
     return CascadeWrapperBase(load_environment_variables(), cache_configuration())
+
+
+def _guard_asset_type(identifier: IdentifierType | CascadePath, *, context: str) -> None:
+    """Fail-closed asset-type check, called before any network request goes
+    out for a tool that accepts an identifier. See security.py for what's
+    blocked and why."""
+    asset_type = (
+        identifier.get_type if isinstance(identifier, IdentifierType) else identifier["asset_type"]
+    )
+    if not security.is_asset_type_allowed(asset_type):
+        raise errors.blocked_asset_type_error(str(asset_type), context=context)
 
 
 @mcp.tool()
@@ -107,6 +118,7 @@ def cascade_read_asset(
     an expand_with hint. format="detailed": the raw asset payload, unmodified.
     """
     try:
+        _guard_asset_type(identifier, context="cascade_read_asset")
         with _wrapper() as cascade:
             cascade.operations.read(identifier)
             result = errors.single_result(
@@ -139,6 +151,7 @@ def cascade_get_data_structure(
     node_identifier given: returns that one field's full definition.
     """
     try:
+        _guard_asset_type(identifier, context="cascade_get_data_structure")
         with _wrapper() as cascade:
             cascade.operations.read(identifier)
             result = errors.single_result(
@@ -225,6 +238,7 @@ def cascade_get_page_config(
     Both given: returns that region's content.
     """
     try:
+        _guard_asset_type(identifier, context="cascade_get_page_config")
         if page_region is not None and configuration_name is None:
             raise errors.page_region_requires_configuration_name_error(
                 context="cascade_get_page_config"

@@ -15,14 +15,14 @@ from cascade_cms.cmstypes import Asset, IdentifierType, ListElements
 
 from .references import find_references
 
-# Locked routing rule (MCP_IMPLEMENTATION_PLAN_REV.md §6.2). "structuredData"
-# is Cascade's documented REST field name for data-bound asset types, but is
-# NOT yet confirmed against a real payload in this repo (no fixture
-# references it) - unlike "pageConfigurations", which Asset.__init__ already
-# parses. Confirm this key name against a real cascade_read_asset
-# (format="detailed") response during Phase 1 smoke testing; if it turns out
-# to be wrong, only that one hint's specificity is affected - it falls
-# through to the generic detailed-mode hint below, which is still correct.
+# "structuredData" is Cascade's documented REST field name for data-bound
+# asset types, but is NOT yet confirmed against a real payload in this repo
+# (no fixture references it) - unlike "pageConfigurations", which
+# Asset.__init__ already parses. Confirm this key name against a real
+# cascade_read_asset (format="detailed") response against a live server; if
+# it turns out to be wrong, only that one hint's specificity is affected - it
+# falls through to the generic detailed-mode hint below, which is still
+# correct.
 _EXPAND_HINT_BY_KEY: dict[str, str] = {
     "structuredData": "cascade_get_data_structure",
     "pageConfigurations": "cascade_get_page_config",

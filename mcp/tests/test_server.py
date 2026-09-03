@@ -123,6 +123,40 @@ def test_cascade_read_asset_raises_tool_error_on_empty_submit_result(patch_wrapp
         server.cascade_read_asset(identifier=_identifier())
 
 
+@pytest.mark.parametrize("asset_type", ["user", "group", "role", "message"])
+def test_cascade_read_asset_blocks_sensitive_asset_types(patch_wrapper, asset_type):
+    patch_wrapper([Asset({"asset": {asset_type: {"id": "abc123", "name": "x"}}})])
+    identifier = IdentifierType(identifier=uuid.uuid4(), asset_type=asset_type)
+
+    with pytest.raises(ToolError) as exc_info:
+        server.cascade_read_asset(identifier=identifier)
+
+    assert asset_type in str(exc_info.value)
+
+
+def test_cascade_read_asset_blocks_sensitive_asset_type_before_any_request(monkeypatch):
+    """The guard must fire before _wrapper() is ever entered - no network call
+    for a blocked type, even a failing one."""
+
+    def _boom():
+        raise AssertionError("_wrapper() should not be called for a blocked asset type")
+
+    monkeypatch.setattr(server, "_wrapper", _boom)
+    identifier = IdentifierType(identifier=uuid.uuid4(), asset_type="user")
+
+    with pytest.raises(ToolError):
+        server.cascade_read_asset(identifier=identifier)
+
+
+def test_cascade_read_asset_allows_ordinary_asset_type(patch_wrapper):
+    asset = Asset({"asset": {"page": {"id": "abc123", "name": "My Page"}}})
+    patch_wrapper([asset])
+
+    result = server.cascade_read_asset(identifier=_identifier())
+
+    assert result["id"] == "abc123"
+
+
 def _load_asset(name: str) -> Asset:
     with open(FIXTURES / name) as f:
         return Asset(json.load(f))

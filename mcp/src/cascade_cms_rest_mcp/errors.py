@@ -11,6 +11,7 @@ from typing import Any
 from cascade_cms.cmstypes import Asset, CascadeError, IdentifierType, Path
 from mcp.server.mcpserver.exceptions import ToolError
 
+from . import security
 from .formatting import format_names_for_message, sort_by_relevance
 
 
@@ -48,6 +49,24 @@ def search_failure_error(result: CascadeError | Exception) -> ToolError:
         f"cascade_search failed unexpectedly ({result}). This usually indicates a "
         "connectivity/credential problem rather than a bad query - check CASCADE_URL "
         "and CASCADE_API_KEY."
+    )
+
+
+def blocked_asset_type_error(asset_type: str, *, context: str) -> ToolError:
+    if security.is_asset_type_blocked(asset_type):
+        return ToolError(
+            f"{context}: asset type '{asset_type}' is not accessible via this server. "
+            "Access to users, groups, roles, and messages is restricted to protect "
+            "confidential information (usernames, hashed passwords, permission "
+            "matrices). If you need to work with permissions or user management, "
+            "describe the requirement to the user and ask them to handle it "
+            "manually rather than through this tool."
+        )
+    return ToolError(
+        f"{context}: asset type '{asset_type}' is not currently supported by this "
+        "server's allowlist. If this is a real Cascade asset type that should be "
+        "accessible, it needs to be added to ALLOWED_ASSET_TYPES in "
+        "cascade_cms_rest_mcp/security.py."
     )
 
 

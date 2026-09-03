@@ -10,7 +10,6 @@
 # users - only the builders at skill/*.py are linted.
 exclude = [
     "skill/cascade-script-writer",
-    "skill/cascade-script-writer-lite",
     # Manual human-run script against a live Cascade instance (see its own
     # docstring) - not library code or an automated test, so lint rules aimed
     # at production code don't apply. mcp/tests/conftest.py also excludes it
@@ -18,3 +17,12 @@ exclude = [
     # otherwise make pytest import (and execute) it as a test module.
     "mcp/tests/smoke_test.py",
 ]
+line-length = 150
+
+# `skill/cascade-script-writer/scripts/validate_script.py` runs
+# `ruff format --check` against every generated/template script as a
+# hard-failure gate (see SKILL.md's "Formatting & readability" section), so
+# this section's line-length also governs bundle content even though the
+# [tool.ruff] exclude above keeps the linter itself off it.
+[tool.ruff.format]
+line-ending = "lf"
