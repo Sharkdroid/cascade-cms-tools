@@ -1,5 +1,5 @@
 """Centralized asset-type allowlist/blocklist, shared by the MCP server (this
-package) and the skill validator (skill/build_skill.py copies this module's
+package) and the skill validator (build_release.py copies this module's
 lists into the built skill bundle at build time - see its
 `write_security_gate()` - since a shipped skill bundle has no runtime
 dependency on this package).

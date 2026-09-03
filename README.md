@@ -14,6 +14,39 @@ the library itself stays a clean, dependency-light package.
 Both depend on the **published** `cascade-cms-rest` package (PyPI), not a
 vendored copy — see each directory's own docs for how it's kept in sync.
 
+Both ship together in one combined, versioned zip — see
+[Releases](../../releases) or build it yourself (`python build_release.py`,
+see `AGENTS.md`) — but neither requires the other at runtime. Use just the
+skill, just the MCP server, or both.
+
+## How to use
+
+1. **Get the bundle.** Download the latest `cascade-cms-tools-<version>.zip`
+   from [Releases](../../releases) and unpack it, or build it yourself
+   (`python build_release.py`). You get a `cascade-cms-tools/` folder with
+   `skill/cascade-script-writer/` and `mcp/` side by side.
+
+2. **Set up the MCP server** (optional, works with any MCP client — Claude
+   Code, Claude Desktop, or otherwise): point your client's MCP config at the
+   unpacked `mcp/` directory. See [`mcp/README.md`](mcp/README.md#client-configuration)
+   for the exact config block and required environment variables
+   (`CASCADE_API_KEY`, `CASCADE_URL`).
+
+3. **Install the skill** (optional, Claude-specific — install whichever way
+   matches your client):
+   - **Claude Code**: copy `skill/cascade-script-writer/` into
+     `.claude/skills/cascade-script-writer/` (project-level, for team
+     sharing) or `~/.claude/skills/cascade-script-writer/` (personal).
+   - **Claude Desktop / claude.ai**: re-zip just the
+     `skill/cascade-script-writer/` folder (so the zip's top level is the
+     `cascade-script-writer/` folder itself, not the combined bundle) and
+     upload it via **Customize → Skills → Upload a skill**.
+
+4. **Use it.** Ask Claude to write a script against `cascade-cms-rest` for
+   whatever asset-management task you have — see "What this is for" below
+   for the tasks this tooling is aimed at, and `skill/cascade-script-writer/SKILL.md`
+   for the full workflow the skill follows.
+
 ## What this is for
 
 The skill and MCP server exist for **multi-step business-logic scripts** —
@@ -59,5 +92,5 @@ ruff check .
 mypy mcp/src/
 ```
 
-See `AGENTS.md` for the skill-authoring workflow and how to rebuild release
-artifacts for both `mcp/` and `skill/`.
+See `AGENTS.md` for the skill-authoring workflow and how to rebuild the
+combined release bundle (`python build_release.py`).

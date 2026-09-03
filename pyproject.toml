@@ -5,9 +5,9 @@
 
 [tool.ruff]
 # Skill bundle contents are not library code: cascade_cms/ (synced from the
-# installed cascade-cms-rest package by skill/build_skill.py) is a vendored
+# installed cascade-cms-rest package by build_release.py) is a vendored
 # snapshot, and templates/ and scripts/ are standalone files that ship to end
-# users - only the builders at skill/*.py are linted.
+# users.
 exclude = [
     "skill/cascade-script-writer",
     # Manual human-run script against a live Cascade instance (see its own

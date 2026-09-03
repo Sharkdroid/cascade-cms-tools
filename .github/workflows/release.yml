@@ -19,18 +19,20 @@ jobs:
       - name: Install package
         run: pip install -e "./mcp[dev]"
 
-      # skill/build_skill.py's hand-authored content (SKILL.md, templates/,
+      # build_release.py's hand-authored skill content (SKILL.md, templates/,
       # scripts/, references/asset_api.md) lives only inside the most recently
-      # committed .skill zip - skill/cascade-script-writer/ is a gitignored
-      # working directory, not tracked source. Seed it from the latest
-      # tracked build before re-syncing/validating against whatever
+      # committed combined bundle zip - skill/cascade-script-writer/ is a
+      # gitignored working directory, not tracked source. Seed it from the
+      # latest tracked build before re-syncing/validating against whatever
       # cascade-cms-rest version this job just installed.
-      - name: Unpack latest skill bundle
+      - name: Unpack latest release bundle
         run: |
           set -e
-          LATEST_FULL=$(ls skill/cascade-script-writer-[0-9]*.skill | sort -V | tail -1)
-          echo "Unpacking $LATEST_FULL"
-          unzip -q "$LATEST_FULL" -d skill/
+          LATEST=$(ls dist/cascade-cms-tools-[0-9]*.zip | sort -V | tail -1)
+          echo "Unpacking $LATEST"
+          unzip -q "$LATEST" -d /tmp/latest-bundle
+          rm -rf skill/cascade-script-writer
+          mv /tmp/latest-bundle/cascade-cms-tools/skill/cascade-script-writer skill/
 
       - name: Lint
         run: ruff check .
@@ -44,11 +46,8 @@ jobs:
       # A template broken by a library API change fails here and blocks the
       # release; fixing it is human/agent judgment work done before
       # re-tagging, same as any other failing CI check (see AGENTS.md).
-      - name: Validate skill bundles against installed cascade-cms-rest
-        run: python skill/build_skill.py --no-zip
-
-      - name: Validate MCP release packaging
-        run: python mcp/build_release.py --no-zip
+      - name: Validate release bundle against installed cascade-cms-rest
+        run: python build_release.py --no-zip
 
   release:
     needs: validate
@@ -58,10 +57,8 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          # Every currently-tracked build of every bundle, not just the
+          # Every currently-tracked build of the bundle, not just the
           # newest - this repo keeps full build history committed rather
           # than pruning old versions, and a release mirrors that.
-          files: |
-            skill/*.skill
-            mcp/dist/*.zip
+          files: dist/cascade-cms-tools-*.zip
           generate_release_notes: true

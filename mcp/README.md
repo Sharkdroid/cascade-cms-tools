@@ -58,15 +58,16 @@ or `CASCADE_URL` is missing.
 
 ## Client configuration
 
-Download and unpack a [release artifact](dist/) (built via `build_release.py`
-— see the repo root `AGENTS.md`), then point your MCP client at it:
+Download and unpack the [combined release bundle](../dist/) (built via the
+repo root's `build_release.py` — see `AGENTS.md`), then point your MCP
+client at the `mcp/` subdirectory it contains:
 
 ```json
 {
   "mcpServers": {
     "cascade-cms": {
       "command": "uvx",
-      "args": ["--from", "/path/to/unpacked/cascade-cms-rest-mcp", "cascade-cms-rest-mcp"],
+      "args": ["--from", "/path/to/unpacked/cascade-cms-tools/mcp", "cascade-cms-rest-mcp"],
       "env": {
         "CASCADE_API_KEY": "...",
         "CASCADE_URL": "https://your-cascade-host:8443"
