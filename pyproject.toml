@@ -1,0 +1,20 @@
+# No [project]/[build-system] here on purpose - nothing is built or installed
+# from the repo root itself. mcp/ is its own installable project
+# (mcp/pyproject.toml); skill/ is not a Python package at all. This file only
+# carries tool config shared across both.
+
+[tool.ruff]
+# Skill bundle contents are not library code: cascade_cms/ (synced from the
+# installed cascade-cms-rest package by skill/build_skill.py) is a vendored
+# snapshot, and templates/ and scripts/ are standalone files that ship to end
+# users - only the builders at skill/*.py are linted.
+exclude = [
+    "skill/cascade-script-writer",
+    "skill/cascade-script-writer-lite",
+    # Manual human-run script against a live Cascade instance (see its own
+    # docstring) - not library code or an automated test, so lint rules aimed
+    # at production code don't apply. mcp/tests/conftest.py also excludes it
+    # from pytest collection, since its *_test.py-adjacent name would
+    # otherwise make pytest import (and execute) it as a test module.
+    "mcp/tests/smoke_test.py",
+]

@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install -e "./mcp[dev]"
+
+      # skill/build_skill.py's hand-authored content (SKILL.md, templates/,
+      # scripts/, references/ASSET.md) lives only inside the most recently
+      # committed .skill zips - skill/cascade-script-writer{,-lite}/ are
+      # gitignored working directories, not tracked source. Seed them from
+      # the latest tracked build before re-syncing/validating against
+      # whatever cascade-cms-rest version this job just installed.
+      - name: Unpack latest skill bundles
+        run: |
+          set -e
+          LATEST_FULL=$(ls skill/cascade-script-writer-[0-9]*.skill | sort -V | tail -1)
+          LATEST_LITE=$(ls skill/cascade-script-writer-lite-*.skill | sort -V | tail -1)
+          echo "Unpacking $LATEST_FULL and $LATEST_LITE"
+          unzip -q "$LATEST_FULL" -d skill/
+          unzip -q "$LATEST_LITE" -d skill/
+
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy mcp/src/
+      - name: Test
+        run: pytest
+
+      # Re-syncs cascade_cms/ from the just-installed cascade-cms-rest and
+      # re-validates every template against it - the actual release gate.
+      # A template broken by a library API change fails here and blocks the
+      # release; fixing it is human/agent judgment work done before
+      # re-tagging, same as any other failing CI check (see AGENTS.md).
+      - name: Validate skill bundles against installed cascade-cms-rest
+        run: python skill/build_skill.py --no-zip
+
+      - name: Validate MCP release packaging
+        run: python mcp/build_release.py --no-zip
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Every currently-tracked build of every bundle, not just the
+          # newest - this repo keeps full build history committed rather
+          # than pruning old versions, and a release mirrors that.
+          files: |
+            skill/*.skill
+            mcp/dist/*.zip
+          generate_release_notes: true
