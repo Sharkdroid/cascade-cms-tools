@@ -58,16 +58,15 @@ or `CASCADE_URL` is missing.
 
 ## Client configuration
 
-Download and unpack the [combined release bundle](../dist/) (built via the
-repo root's `build_release.py` — see `AGENTS.md`), then point your MCP
-client at the `mcp/` subdirectory it contains:
+Install from PyPI (`pip install cascade-cms-rest-mcp`) or run it directly
+with `uvx` — no local checkout needed — then point your MCP client at it:
 
 ```json
 {
   "mcpServers": {
     "cascade-cms": {
       "command": "uvx",
-      "args": ["--from", "/path/to/unpacked/cascade-cms-tools/mcp", "cascade-cms-rest-mcp"],
+      "args": ["cascade-cms-rest-mcp"],
       "env": {
         "CASCADE_API_KEY": "...",
         "CASCADE_URL": "https://your-cascade-host:8443"
@@ -76,6 +75,10 @@ client at the `mcp/` subdirectory it contains:
   }
 }
 ```
+
+To run against a local checkout of this repo instead of the published
+package (e.g. testing an unreleased change), use `uvx --from ./mcp
+cascade-cms-rest-mcp` or point `args` at `["--from", "/path/to/cascade-cms-tools/mcp", "cascade-cms-rest-mcp"]`.
 
 ## Development
 

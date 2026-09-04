@@ -21,14 +21,14 @@ jobs:
 
       # build_release.py's hand-authored skill content (SKILL.md, templates/,
       # scripts/, references/asset_api.md) lives only inside the most recently
-      # committed combined bundle zip - skill/cascade-script-writer/ is a
+      # committed skill bundle zip - skill/cascade-script-writer/ is a
       # gitignored working directory, not tracked source. Seed it from the
       # latest tracked build before re-syncing/validating against whatever
       # cascade-cms-rest version this job just installed.
       - name: Unpack latest release bundle
         run: |
           set -e
-          LATEST=$(ls dist/cascade-cms-tools-[0-9]*.zip | sort -V | tail -1)
+          LATEST=$(ls dist/cascade-cms-tools-skill-[0-9]*.zip | sort -V | tail -1)
           echo "Unpacking $LATEST"
           unzip -q "$LATEST" -d /tmp/latest-bundle
           rm -rf skill/cascade-script-writer
@@ -54,11 +54,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The release now attaches only the current tag's skill zip, not the
+      # full committed history in dist/ - GitHub Releases ship the skill
+      # only; the MCP server is published to PyPI instead (see
+      # publish-pypi below).
+      - name: Determine skill zip for this tag
+        id: zip
+        run: |
+          set -e
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION_NODOTS="${VERSION//./}"
+          FILE="dist/cascade-cms-tools-skill-${VERSION_NODOTS}.zip"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::Expected $FILE for tag $GITHUB_REF_NAME, not found"
+            exit 1
+          fi
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          # Every currently-tracked build of the bundle, not just the
-          # newest - this repo keeps full build history committed rather
-          # than pruning old versions, and a release mirrors that.
-          files: dist/cascade-cms-tools-*.zip
+          files: ${{ steps.zip.outputs.file }}
           generate_release_notes: true
+
+  publish-pypi:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build mcp/ package
+        run: |
+          pip install build
+          python -m build ./mcp
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: mcp/dist

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Build the cascade-cms-tools release bundle from tracked source.
+"""Build the cascade-cms-tools skill release bundle from tracked source.
 
-One combined artifact — dist/cascade-cms-tools-<version>.zip — containing
-both the skill (skill/cascade-script-writer/) and the MCP server (mcp/),
-plus the root README and LICENSE. Replaces the two separate per-directory
-artifacts (skill/*.skill, mcp/dist/*.zip) this repo used to ship: one
-version number, one zip, one release asset. Neither piece requires the
-other to be *used* — the bundle just travels together so a user grabs one
-download and gets both.
+One artifact — dist/cascade-cms-tools-skill-<version>.zip — containing the
+skill (skill/cascade-script-writer/) plus the root README and LICENSE. The
+MCP server (mcp/) is a separate, independently-versioned PyPI package
+(cascade-cms-rest-mcp) published straight from mcp/ by
+.github/workflows/release.yml's publish-pypi job — it is no longer stapled
+into this zip. Neither piece requires the other to be *used*; they just
+happen to share this repo and its tools-version number.
 
 Syncs the *installed* cascade-cms-rest package into the skill bundle (this
 repo holds no copy of the library's source), records a manifest, writes the
@@ -50,10 +50,6 @@ SKILL_SRC = SKILL_DIR / "cascade-script-writer"
 MCP_DIR = REPO_ROOT / "mcp"
 MCP_PYPROJECT = MCP_DIR / "pyproject.toml"
 DIST_DIR = REPO_ROOT / "dist"
-
-# Everything a downstream `uvx --from <unpacked-dir>/mcp cascade-cms-rest-mcp`
-# needs to resolve dependencies and find the console-script entry point.
-MCP_INCLUDE = ("pyproject.toml", "README.md", "src")
 
 
 def read_tools_version() -> str:
@@ -175,25 +171,9 @@ def validate_templates() -> None:
     print(f"\n[OK] All {len(templates)} templates passed validation")
 
 
-def collect_mcp_files() -> list[Path]:
-    files: list[Path] = []
-    for name in MCP_INCLUDE:
-        source = MCP_DIR / name
-        if source.is_file():
-            files.append(source)
-        elif source.is_dir():
-            for path in sorted(source.rglob("*")):
-                if path.is_dir() or "__pycache__" in path.parts:
-                    continue
-                files.append(path)
-        else:
-            sys.exit(f"[BUILD ERROR] Expected {name} in {MCP_DIR}, not found")
-    return files
-
-
 def build_zip(tools_version: str) -> Path:
     DIST_DIR.mkdir(exist_ok=True)
-    out = DIST_DIR / f"cascade-cms-tools-{tools_version.replace('.', '')}.zip"
+    out = DIST_DIR / f"cascade-cms-tools-skill-{tools_version.replace('.', '')}.zip"
     root_name = "cascade-cms-tools"
 
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -201,9 +181,6 @@ def build_zip(tools_version: str) -> Path:
             if path.is_dir() or "__pycache__" in path.parts or ".ruff_cache" in path.parts:
                 continue
             zf.write(path, Path(root_name) / "skill" / path.relative_to(SKILL_DIR))
-
-        for path in collect_mcp_files():
-            zf.write(path, Path(root_name) / "mcp" / path.relative_to(MCP_DIR))
 
         for extra in ("README.md", "LICENSE"):
             zf.write(REPO_ROOT / extra, Path(root_name) / extra)
@@ -220,9 +197,6 @@ def build(tools_version: str, zip_it: bool) -> None:
     write_skill_manifest(library_version, files)
     write_security_gate()
     validate_templates()
-
-    mcp_files = collect_mcp_files()
-    print(f"[OK] {len(mcp_files)} mcp/ file(s) staged for release")
 
     if zip_it:
         build_zip(tools_version)

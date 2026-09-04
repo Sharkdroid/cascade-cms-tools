@@ -68,15 +68,17 @@ pip install --upgrade cascade-cms-rest   # first, if you want to bundle a newly-
 python build_release.py
 ```
 
-One combined artifact, `dist/cascade-cms-tools-<version>.zip`, containing
-both the skill and the MCP server side by side — not two separate archives.
-The build syncs the *installed* `cascade-cms-rest` package into the skill
-half (this repo holds no copy of the library's source — see
-`build_release.py`'s `sync_skill_snapshot()`), rewrites the manifest,
-validates every template, stages the MCP server's installable project
-(`pyproject.toml`, `README.md`, `src/cascade_cms_rest_mcp/`), and zips both
-together with the root `README.md`/`LICENSE`. Never copy the skill snapshot
-by hand — a stale bundle makes the validator reject correct scripts.
+One artifact, `dist/cascade-cms-tools-skill-<version>.zip`, containing just
+the skill plus the root `README.md`/`LICENSE`. The MCP server (`mcp/`) is
+no longer stapled into this zip — it's a separate, independently-published
+PyPI package (`cascade-cms-rest-mcp`), published straight from `mcp/` by
+`.github/workflows/release.yml`'s `publish-pypi` job on every `v*.*.*` tag
+(see "Cutting a release" below). The build syncs the *installed*
+`cascade-cms-rest` package into the skill (this repo holds no copy of the
+library's source — see `build_release.py`'s `sync_skill_snapshot()`),
+rewrites the manifest, validates every template, and zips it up. Never copy
+the skill snapshot by hand — a stale bundle makes the validator reject
+correct scripts.
 
 The zip filename and the library version bundled inside are deliberately
 different numbers:
@@ -103,11 +105,6 @@ correctly. That part is agent/human judgment work no CI step can do —
 rewrite the affected template by hand locally, confirm `build_release.py`
 passes, then commit and re-tag.
 
-Not published to PyPI or to a Claude skill marketplace — see the repo root
-`README.md`'s "How to use" section for how an end user consumes the zip
-(unpack it, then wire up the skill and/or the MCP server independently;
-neither half requires the other).
-
 ## Cutting a release
 
 ```bash
@@ -115,12 +112,19 @@ git tag v0.2.0   # matches mcp/pyproject.toml's version
 git push origin v0.2.0
 ```
 
-`.github/workflows/release.yml` then re-syncs/re-validates the bundle
+`.github/workflows/release.yml` then re-syncs/re-validates the skill bundle
 against whatever `cascade-cms-rest` is installed (see the section above),
-runs `ruff`/`mypy`/`pytest`, and — only if all of that passes — creates a
-GitHub release attaching **every** currently-tracked
-`dist/cascade-cms-tools-*.zip` file (this repo keeps full build history
-committed, not just the latest). So: rebuild+commit (`python
-build_release.py`, then commit the resulting zip) *before* tagging — the
-tag doesn't trigger a rebuild-and-commit, only a validate-and-publish-
-what's-there.
+runs `ruff`/`mypy`/`pytest`, and — only if all of that passes — runs two
+jobs in parallel:
+
+- **`release`** creates a GitHub release attaching only this tag's
+  `dist/cascade-cms-tools-skill-<version>.zip` (not the full history kept
+  in `dist/`). So: rebuild+commit (`python build_release.py`, then commit
+  the resulting zip) *before* tagging — the tag doesn't trigger a
+  rebuild-and-commit, only a validate-and-publish-what's-there.
+- **`publish-pypi`** builds `mcp/` (`python -m build ./mcp`) and publishes
+  it to PyPI as `cascade-cms-rest-mcp` via Trusted Publishing (OIDC) — no
+  API token stored in the repo. This requires the repo to be registered as
+  a trusted publisher for the `pypi` GitHub Environment on PyPI's project
+  settings (one-time, done on pypi.org, not in this repo) before the first
+  tag that should actually publish.
