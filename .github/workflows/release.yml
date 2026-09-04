@@ -32,6 +32,7 @@ jobs:
           echo "Unpacking $LATEST"
           unzip -q "$LATEST" -d /tmp/latest-bundle
           rm -rf skill/cascade-script-writer
+          mkdir -p skill
           mv /tmp/latest-bundle/cascade-cms-tools/skill/cascade-script-writer skill/
 
       - name: Lint
