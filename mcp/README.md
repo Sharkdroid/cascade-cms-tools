@@ -4,17 +4,31 @@ A local, read-only [MCP](https://modelcontextprotocol.io) server exposing a
 Hannon Hill Cascade CMS server to MCP clients (Claude Desktop, Claude Code,
 etc.), built on top of [`cascade-cms-rest`](https://pypi.org/project/cascade-cms-rest/).
 
-Six tools, all read-only — no tool in this server can perform a write
+Seven tools, all read-only — no tool in this server can perform a write
 operation, even indirectly:
 
 | Tool | Purpose |
 |---|---|
 | `cascade_search` | Search a site for assets by text |
 | `cascade_read_asset` | Read a single asset by id or by site+path |
+| `cascade_query_asset` | A narrowed read of one part of any asset, by path query — works on any asset shape, not just data-bound ones |
 | `cascade_get_data_structure` | A data-bound asset's field schema, resolved from its bound content type/data definition |
 | `cascade_get_page_config` | A data-bound asset's page configuration names/regions |
 | `cascade_root_container_id` | The root container id (e.g. Data Definitions folder) for an asset type on a site |
 | `cascade_list_sites` | List every site on the server |
+
+`cascade_query_asset` exists because `cascade_read_asset`'s concise mode only
+collapses *top-level* fields, and its only narrowing hints are two
+page/content-type-specific field names (`structuredData`, `pageConfigurations`)
+— every other shape (metadata sets in particular, whose nested layout varies
+per metadata set definition) otherwise has no narrowed-read option short of
+`format="detailed"` dumping the entire payload. `cascade_query_asset` takes a
+small, safe path-query string — parsed via Python's `ast` module (never
+`eval`'d) — such as `metadata.dynamicFields[0].value`,
+`metadata["dynamicFields"][0]`, a `"*"` wildcard over a list/dict, or
+`find("identifier")` to search the whole asset for a key by name at any
+depth — and returns only the matched sub-value(s), each tagged with its
+resolved path for a follow-up query.
 
 `cascade_get_data_structure` and `cascade_get_page_config` are
 **schema-authoritative**: they resolve field/group/config names from the

@@ -157,6 +157,127 @@ def test_cascade_read_asset_allows_ordinary_asset_type(patch_wrapper):
     assert result["id"] == "abc123"
 
 
+def test_cascade_query_asset_plain_path_detailed(patch_wrapper):
+    asset = Asset(
+        {
+            "asset": {
+                "metadataset": {
+                    "id": "abc123",
+                    "metadata": {"dynamicFields": [{"name": "color", "value": "red"}]},
+                }
+            }
+        }
+    )
+    patch_wrapper([asset])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(),
+        query="metadata.dynamicFields[0].value",
+        format="detailed",
+    )
+
+    assert result["total_count"] == 1
+    assert result["matches"][0]["value"] == "red"
+    assert result["matches"][0]["path"] == "$.metadata.dynamicFields[0].value"
+
+
+def test_cascade_query_asset_concise_collapses_large_nested_match(patch_wrapper):
+    asset = Asset(
+        {
+            "asset": {
+                "metadataset": {
+                    "id": "abc123",
+                    "metadata": {"dynamicFields": [{"name": "color", "value": "red"}]},
+                }
+            }
+        }
+    )
+    patch_wrapper([asset])
+
+    result = server.cascade_query_asset(identifier=_identifier(), query="metadata")
+
+    match = result["matches"][0]
+    assert match["value"]["_collapsed"] is True
+    assert match["value"]["expand_with"] == (
+        'cascade_query_asset(query="$.metadata", format="detailed")'
+    )
+
+
+def test_cascade_query_asset_wildcard_returns_multiple_matches(patch_wrapper):
+    asset = Asset(
+        {
+            "asset": {
+                "metadataset": {
+                    "items": [{"name": "a"}, {"name": "b"}],
+                }
+            }
+        }
+    )
+    patch_wrapper([asset])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(), query='items["*"]', format="detailed"
+    )
+
+    assert result["total_count"] == 2
+    assert [m["value"] for m in result["matches"]] == [{"name": "a"}, {"name": "b"}]
+
+
+def test_cascade_query_asset_find_matches_by_key_regardless_of_nesting(patch_wrapper):
+    asset = Asset(
+        {
+            "asset": {
+                "metadataset": {
+                    "identifier": "top",
+                    "group": {"identifier": "nested"},
+                }
+            }
+        }
+    )
+    patch_wrapper([asset])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(), query='find("identifier")', format="detailed"
+    )
+
+    assert result["total_count"] == 2
+    assert {m["value"] for m in result["matches"]} == {"top", "nested"}
+
+
+def test_cascade_query_asset_no_matches_returns_empty_not_an_error(patch_wrapper):
+    asset = Asset({"asset": {"metadataset": {"id": "abc123"}}})
+    patch_wrapper([asset])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(), query="does.missing"
+    )
+
+    assert result["matches"] == []
+    assert result["total_count"] == 0
+
+
+def test_cascade_query_asset_invalid_query_raises_tool_error(patch_wrapper):
+    asset = Asset({"asset": {"metadataset": {"id": "abc123"}}})
+    patch_wrapper([asset])
+
+    with pytest.raises(ToolError) as exc_info:
+        server.cascade_query_asset(identifier=_identifier(), query="a + b")
+
+    message = str(exc_info.value)
+    assert "a + b" in message
+
+
+@pytest.mark.parametrize("asset_type", ["user", "group", "role", "message"])
+def test_cascade_query_asset_blocks_sensitive_asset_types(patch_wrapper, asset_type):
+    patch_wrapper([Asset({"asset": {asset_type: {"id": "abc123", "name": "x"}}})])
+    identifier = IdentifierType(identifier=uuid.uuid4(), asset_type=asset_type)
+
+    with pytest.raises(ToolError) as exc_info:
+        server.cascade_query_asset(identifier=identifier, query="id")
+
+    assert asset_type in str(exc_info.value)
+
+
 def _load_asset(name: str) -> Asset:
     with open(FIXTURES / name) as f:
         return Asset(json.load(f))

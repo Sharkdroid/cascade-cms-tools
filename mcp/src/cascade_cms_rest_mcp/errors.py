@@ -189,6 +189,15 @@ def page_region_requires_configuration_name_error(*, context: str) -> ToolError:
     )
 
 
+def invalid_query_error(query: str, reason: str, *, context: str) -> ToolError:
+    return ToolError(
+        f"{context}: query {query!r} is not valid - {reason}. Examples of valid "
+        'queries: \'metadata.dynamicFields[0].value\', \'metadata["dynamicFields"][0]\', '
+        '\'metadata["*"]\' (wildcard over a list/dict), \'find("identifier")\' (search '
+        "the whole asset for a key by name, at any depth)."
+    )
+
+
 def not_a_site_error(asset: Asset, *, context: str) -> ToolError:
     return ToolError(
         f"{context}: expected a site asset, but read a '{asset.internal_type}' asset "

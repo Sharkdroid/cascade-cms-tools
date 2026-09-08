@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from cascade_cms.cmstypes import Asset, IdentifierType, ListElements
 
+from . import query
 from .references import find_references
 
 # "structuredData" is Cascade's documented REST field name for data-bound
@@ -27,7 +28,13 @@ _EXPAND_HINT_BY_KEY: dict[str, str] = {
     "structuredData": "cascade_get_data_structure",
     "pageConfigurations": "cascade_get_page_config",
 }
-_DEFAULT_EXPAND_HINT = 'cascade_read_asset(format="detailed")'
+# Steers any other collapsed top-level field (any asset shape - metadata sets
+# included, not just pages/content-type-bound assets) toward a narrowed
+# cascade_query_asset read first, rather than straight at a full detailed dump.
+_DEFAULT_EXPAND_HINT = (
+    'cascade_query_asset(query="<key>") for a narrowed read, or '
+    'cascade_read_asset(format="detailed") for everything'
+)
 
 _SCALAR_TYPES = (str, int, float, bool, type(None))
 
@@ -58,6 +65,46 @@ def format_asset(
     if references:
         collapsed["_references"] = references
     return collapsed
+
+
+def _collapse_query_match(path: str, value: Any) -> Any:
+    """Same scalar/uuid/dict/list shaping as _collapse_value, but the
+    expand_with hint points at a refined cascade_query_asset call using this
+    match's own resolved path, rather than the page-specific hint table -
+    works for any asset shape, not just the two keys _EXPAND_HINT_BY_KEY knows
+    about."""
+    if isinstance(value, _SCALAR_TYPES):
+        return value
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, (dict, list)):
+        return {
+            "_collapsed": True,
+            "count": len(value),
+            "expand_with": f'cascade_query_asset(query="{path}", format="detailed")',
+        }
+    return str(value)
+
+
+def format_query_result(
+    matches: list[query.Match],
+    *,
+    format: Literal["concise", "detailed"],
+    limit: int | None = None,
+) -> dict[str, Any]:
+    truncated = matches[: limit or DEFAULT_LIST_LIMIT]
+    if format == "detailed":
+        shaped = [{"path": m.path, "value": m.value} for m in truncated]
+    else:
+        shaped = [
+            {"path": m.path, "value": _collapse_query_match(m.path, m.value)}
+            for m in truncated
+        ]
+    return {
+        "matches": shaped,
+        "total_count": len(matches),
+        "has_more": len(matches) > len(truncated),
+    }
 
 
 def name_from_path(path: str | None) -> str | None:

@@ -1,8 +1,10 @@
 """MCPServer instance and tool registration for cascade-cms-rest-mcp.
 
 Phase 1: cascade_search, cascade_read_asset. Phase 2: cascade_get_data_structure,
-cascade_get_page_config. Read-only, full stop - no tool in this module (or any
-future one) may wrap a write operation.
+cascade_get_page_config. Phase 3: cascade_query_asset - a generic, shape-agnostic
+narrowed read for any asset type (metadata sets, files, etc.), not just the
+data-bound assets Phase 2 targets. Read-only, full stop - no tool in this
+module (or any future one) may wrap a write operation.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from . import data_structure, errors, formatting, resolution, security
+from . import query as query_module
 from .config import cache_configuration, load_environment_variables
 
 mcp = MCPServer(
@@ -31,7 +34,11 @@ mcp = MCPServer(
         "Read-only inspection of a Hannon Hill Cascade CMS server. Call "
         "cascade_search first if you don't already know an asset's id/type/path; "
         'then cascade_read_asset to read it (format="concise" by default). For a '
-        "data-bound asset's field schema or page configuration names, use "
+        "narrowed read of one nested part of any asset - metadata sets, files, "
+        "or anything else whose shape cascade_read_asset's concise mode can't "
+        "usefully collapse, not just pages - use cascade_query_asset with a "
+        "small path query instead of dumping the whole asset. For a data-bound "
+        "asset's field schema or page configuration names specifically, use "
         "cascade_get_data_structure / cascade_get_page_config - these resolve the "
         "asset's bound content type/data definition rather than sampling one "
         "instance, so they report the full schema-valid set of fields/configs."
@@ -134,6 +141,60 @@ def cascade_read_asset(
         raise
     except Exception as exc:
         raise errors.unexpected_failure_error("cascade_read_asset", exc) from exc
+
+
+@mcp.tool()
+def cascade_query_asset(
+    identifier: IdentifierType | CascadePath,
+    query: str,
+    format: Literal["concise", "detailed"] = "concise",
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Read one narrowed part of a Cascade asset by a small path query, instead
+    of the whole payload - works on any asset type/shape (metadata sets, files,
+    pages, etc.), not just data-bound assets.
+
+    Query syntax: dict/list navigation like a Python expression, e.g.
+    'metadata.dynamicFields[0].value' or 'metadata["dynamicFields"][0]'. Use
+    '*' for a wildcard (every item of a list, or every value of a dict, at
+    that position - e.g. 'metadata["*"]') and 'find("someKey")' to search the
+    entire asset for a key by name at any depth, regardless of shape - useful
+    when you don't know the exact path (e.g. 'find("identifier")' or
+    'metadata.find("identifier")' to search only within metadata). An empty
+    query returns the whole asset.
+
+    Each match is returned with its own resolved path (e.g.
+    "$.metadata.dynamicFields[3].name") so a collapsed nested match's
+    expand_with hint is a concrete, ready-to-run follow-up query. A query
+    that matches nothing returns an empty matches list, not an error.
+    """
+    try:
+        _guard_asset_type(identifier, context="cascade_query_asset")
+        with _wrapper() as cascade:
+            cascade.operations.read(identifier)
+            result = errors.single_result(
+                cascade.submit_requests(), context="cascade_query_asset"
+            )
+
+        if isinstance(result, CascadeError | Exception):
+            raise errors.read_asset_error(
+                identifier, result, context="cascade_query_asset"
+            )
+
+        assert isinstance(result, Asset)
+        try:
+            steps = query_module.parse_query(query)
+        except query_module.QueryError as exc:
+            raise errors.invalid_query_error(
+                query, str(exc), context="cascade_query_asset"
+            ) from exc
+
+        matches = query_module.evaluate(result._data, steps)
+        return formatting.format_query_result(matches, format=format, limit=limit)
+    except ToolError:
+        raise
+    except Exception as exc:
+        raise errors.unexpected_failure_error("cascade_query_asset", exc) from exc
 
 
 @mcp.tool()

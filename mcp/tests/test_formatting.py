@@ -50,12 +50,18 @@ def test_format_asset_concise_collapses_dict_and_list():
     assert result["metadata"] == {
         "_collapsed": True,
         "count": 2,
-        "expand_with": 'cascade_read_asset(format="detailed")',
+        "expand_with": (
+            'cascade_query_asset(query="<key>") for a narrowed read, or '
+            'cascade_read_asset(format="detailed") for everything'
+        ),
     }
     assert result["tags"] == {
         "_collapsed": True,
         "count": 3,
-        "expand_with": 'cascade_read_asset(format="detailed")',
+        "expand_with": (
+            'cascade_query_asset(query="<key>") for a narrowed read, or '
+            'cascade_read_asset(format="detailed") for everything'
+        ),
     }
 
 
