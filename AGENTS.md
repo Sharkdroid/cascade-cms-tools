@@ -5,6 +5,18 @@
 depend on the *published* `cascade-cms-rest` package; neither vendors a copy
 of the library's source.
 
+## Environment
+
+All commands below run in the repo-local conda env, `./.conda` (gitignored):
+
+```bash
+conda create -y -p ./.conda python=3.13
+./.conda/bin/pip install --upgrade cascade-cms-rest ruff
+```
+
+`build_release.py` bundles whatever `cascade-cms-rest` is *installed*, so
+always run it with `./.conda/bin/python`.
+
 ## Repo commands
 
 ```bash
@@ -42,12 +54,17 @@ python skill/cascade-script-writer/scripts/validate_script.py my_script.py
 what it reports and re-run; cap at 3 attempts, then surface the output verbatim
 rather than looping.
 
-Two rules the validator enforces and scripts must never break:
+Four rules the validator enforces and scripts must never break:
 
 - `CascadeWrapperBase` is the only entry point — no `cascade_cms.driver`, no
   manual asyncio event loop, no hand-built `aiohttp.ClientSession`.
 - `Asset` fields are written by attribute (`asset.keywords = value`), never by
   subscript (`asset["keywords"] = value` raises `TypeError`).
+- Everything is type-hinted: every function parameter and return, and every
+  module-level variable (`environment_variables: dict[str, str] = {...}`).
+- No line is longer than 60 characters — code, comments and docstrings.
+  (`ruff format --line-length 60` handles code; strings and comments must be
+  wrapped by hand.)
 
 ## Cross-checking schema with the MCP server
 
@@ -64,8 +81,8 @@ preference, not a dependency.
 ## Rebuilding the release bundle
 
 ```bash
-pip install --upgrade cascade-cms-rest   # first, if you want to bundle a newly-released version
-python build_release.py
+./.conda/bin/pip install --upgrade cascade-cms-rest   # first, to bundle a newly-released version
+./.conda/bin/python build_release.py
 ```
 
 One artifact, `dist/cascade-cms-tools-skill-<version>.zip`, containing just

@@ -1,6 +1,6 @@
 # cascade-cms-tools
 
-Currently built against [`cascade-cms-rest`](https://github.com/Sharkdroid/py-cascade-cms) 3.1.3.
+Currently built against [`cascade-cms-rest`](https://github.com/Sharkdroid/py-cascade-cms) 3.1.6.
 
 Tooling built on top of `cascade-cms-rest`
 (the Hannon Hill Cascade CMS REST client library) — kept in its own repo so

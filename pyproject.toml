@@ -19,10 +19,10 @@ exclude = [
 ]
 line-length = 150
 
-# `skill/cascade-script-writer/scripts/validate_script.py` runs
-# `ruff format --check` against every generated/template script as a
-# hard-failure gate (see SKILL.md's "Formatting & readability" section), so
-# this section's line-length also governs bundle content even though the
-# [tool.ruff] exclude above keeps the linter itself off it.
+# `line-length = 150` above governs mcp/ only. Generated/template scripts in
+# the skill bundle follow a separate, much stricter 60-character limit that
+# `skill/cascade-script-writer/scripts/validate_script.py` enforces itself
+# (a length scan plus `ruff format --check --line-length 60 --isolated`),
+# independent of this file - see SKILL.md's "Script conventions".
 [tool.ruff.format]
 line-ending = "lf"
