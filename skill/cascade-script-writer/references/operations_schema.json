@@ -1,0 +1,344 @@
+{
+  "_meta": {
+    "library": "cascade-cms-rest",
+    "version": "2.0.3",
+    "generated_from": "src/cascade_cms/operations.py + cmstypes.py",
+    "note": "The bundled cascade_cms/*.py files are ground truth. This schema is a fast-lookup summary; read the source when it is not detailed enough."
+  },
+
+  "key_behaviors": {
+    "entry_point": "CascadeWrapperBase(environment_variables, configuration_variables, debug=None) used as a context manager. Never import cascade_cms.driver, never manage an asyncio loop, never construct an aiohttp ClientSession.",
+    "queue_then_submit": "Operations methods QUEUE a request; nothing hits the network until cascade.submit_requests(). submit_requests() clears the queue, so each batch is independent.",
+    "completion_order": "submit_requests() returns results in COMPLETION order, not submission order. Never zip results back to the request list by position — identify each result from its own contents.",
+    "errors_are_values": "A failed operation returns a CascadeError instead of its success type; it does not raise. Requests that error at the Python level are logged and DROPPED from the returned list, so len(results) can be < number queued.",
+    "write_ops_return_success": "Every write operation returns CascadeSuccess ({\"success\": true}) via parser=parse_success — NOT CascadeError, which is only the failure branch. checkOut is the exception: it returns CheckedOutAsset.",
+    "callbacks": ".then(fn) or .then([fn, ...]) registers callbacks run per-result after the batch. Sequential per result, concurrent across results. Async callbacks are awaited; sync callbacks run in an Executor (ThreadPoolExecutor default, pass ProcessPoolExecutor for CPU-bound work via submit_requests(executor=...)). A callback that raises is logged and swallowed — the batch continues.",
+    "caching": "Only GET responses are cached (SQLiteBackend), and only successful parses are cacheable.",
+    "hex_uuid_serialization": "Cascade rejects dashed UUIDs. IdentifierType.identifier, NewAsset.site_id and NewAsset.parent_folder_id all serialize as bare hex (uuid.UUID.hex) via field serializers. Pass real uuid.UUID objects; the library handles the format."
+  },
+
+  "identifiers": {
+    "IdentifierType": {
+      "purpose": "Reference an asset by UUID. Frozen, extra=\"forbid\", populate_by_name=True.",
+      "construct": "IdentifierType(id=uuid.UUID(\"...\"), type=\"page\")",
+      "fields": {
+        "id": "uuid.UUID — required. Field name is `identifier`, alias `id`. Serialized as bare hex.",
+        "type": "AssetTypes — required. Field name is `asset_type`, alias `type`.",
+        "recycled": "bool | None — optional",
+        "path": "PathBase | None — optional {path, siteId, siteName}"
+      },
+      "allowed_keys": ["id", "type", "recycled", "path"],
+      "rejects": "A model_validator raises ValueError('Identifier payload contains unexpected fields: [...]') for ANY other key. `asset_type`/`identifier` are accepted as aliases and rewritten to `type`/`id`.",
+      "properties": {
+        "get_id": "bare-hex string of the UUID",
+        "get_type": "the asset type",
+        "get_path": "path string, or None when `path` is unset",
+        "get_sitename": "site name, or None when `path` is unset",
+        "get_site_id": "site UUID, or None when `path` is unset"
+      }
+    },
+    "Path": {
+      "purpose": "Reference an asset by site + site-relative path. A plain TypedDict (a dict literal), NOT a Pydantic model — nothing validates it at construction.",
+      "construct": "{\"asset_type\": \"page\", \"siteName\": \"www\", \"path\": \"about/index\", \"siteId\": uuid.UUID(\"...\")}",
+      "keys": {
+        "asset_type": "AssetTypes — required to build the URL",
+        "path": "str — required",
+        "siteName": "str — declared Optional on the TypedDict but REQUIRED in practice",
+        "siteId": "uuid.UUID"
+      },
+      "gotcha": "resolve_identifier() raises ValueError('Path identifiers require siteName to build the request URL') when siteName is None or absent. This is a runtime check, not a schema check."
+    },
+    "resolve_identifier": "IdentifierType -> (asset_type, hex_id); Path -> (asset_type, siteName, path). These become the URL segments after the operation name."
+  },
+
+  "operations": {
+    "read": {
+      "signature": "read(identifiers: IdentifierType | Path | list[...], parser=parse_assets)",
+      "http": "GET read/{type}/{id-or-path}",
+      "returns": "Asset on success, CascadeError on failure",
+      "notes": "Accepts a single identifier or a list; each becomes its own queued request."
+    },
+    "create": {
+      "signature": "create(payload: NewAsset | list[NewAsset], parser=None)",
+      "http": "POST create",
+      "returns": "IdentifierType (the new asset's id + type) on success, CascadeError on failure",
+      "notes": "The response only carries createdAssetId, so the parser re-injects asset_type from the payload via functools.partial."
+    },
+    "edit": {
+      "signature": "edit(payload: Asset | list[Asset], parser=parse_success)",
+      "http": "POST edit",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Takes the Asset objects returned by read(), after mutation."
+    },
+    "delete": {
+      "signature": "delete(identifier: IdentifierType | Path, payload: deleteParameters | None = None, parser=parse_success)",
+      "http": "POST delete/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "copy": {
+      "signature": "copy(identifier: IdentifierType | Path | list[...], payload: copyParameters, parser=parse_success)",
+      "http": "POST copy/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "move": {
+      "signature": "move(identifier: IdentifierType | Path | list[...], payload: moveParameters, parser=parse_success)",
+      "http": "POST move/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "publish": {
+      "signature": "publish(identifier: IdentifierType | Path | list[...], payload: publishInformation | None = None, parser=parse_success)",
+      "http": "POST publish/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "search": {
+      "signature": "search(payload: SearchInformation, parser=parse_list_elements)",
+      "http": "POST search",
+      "returns": "ListElements on success, CascadeError on failure",
+      "notes": "Asserts the payload is a SearchInformation instance."
+    },
+    "checkIn": {
+      "signature": "checkIn(identifier: IdentifierType | Path | list[...], payload: Comment, parser=parse_success)",
+      "http": "POST checkIn/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Toggles an in-process checkout ledger that is NOT synced with the server's real lock state."
+    },
+    "checkOut": {
+      "signature": "checkOut(identifier: IdentifierType | Path | list[...], parser=parse_checked_out_asset)",
+      "http": "POST checkOut/{type}/{id-or-path}",
+      "returns": "CheckedOutAsset (has .workingCopyIdentifier) on success, CascadeError on failure",
+      "notes": "The one write-shaped operation that does NOT return CascadeSuccess."
+    },
+    "siteCopy": {
+      "signature": "siteCopy(payload: SiteCopyParameter, parser=parse_success)",
+      "http": "POST siteCopy",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "listSites": {
+      "signature": "listSites(parser=parse_list_elements)",
+      "http": "GET listSites",
+      "returns": "ListElements on success, CascadeError on failure"
+    },
+    "listSubscribers": {
+      "signature": "listSubscribers(identifier: IdentifierType | Path, parser=parse_list_elements) -> None",
+      "http": "GET listSubscribers/{type}/{id-or-path}",
+      "returns": "ListElements on success, CascadeError on failure",
+      "notes": "Returns None, not Self — cannot be chained with .then()."
+    },
+    "readAudits": {
+      "signature": "readAudits(payload: auditParameters, parser=parse_list_elements)",
+      "http": "GET readAudits",
+      "returns": "ListElements on success, CascadeError on failure"
+    },
+    "readAccessRights": {
+      "signature": "readAccessRights(identifier: IdentifierType | Path, parser=parse_access_rights)",
+      "http": "GET readAccessRights/{type}/{id-or-path}",
+      "returns": "accessRightsInformationPayload on success, CascadeError on failure"
+    },
+    "editAccessRights": {
+      "signature": "editAccessRights(payload: accessRightsInformationPayload)",
+      "http": "POST editAccessRights",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "readWorkflowSettings": {
+      "signature": "readWorkflowSettings(identifier: IdentifierType | Path, parser=parse_workflow_settings)",
+      "http": "GET readWorkflowSettings/{type}/{id-or-path}",
+      "returns": "workflowSettingsPayload on success, CascadeError on failure"
+    },
+    "editWorkflowSettings": {
+      "signature": "editWorkflowSettings(payload: workflowSettingsPayload, parser=parse_success) -> None",
+      "http": "POST editWorkflowSettings/{type}/{id}",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Returns None, not Self. Builds its URL from payload.body['identifier']."
+    },
+    "readWorkflowInformation": {
+      "signature": "readWorkflowInformation(identifier: IdentifierType | Path, parser=parse_workflow_information)",
+      "http": "GET readWorkflowInformation/{type}/{id-or-path}",
+      "returns": "workflowInformation on success, CascadeError on failure"
+    },
+    "performWorkflowTransition": {
+      "signature": "performWorkflowTransition(identifier: IdentifierType | Path, payload: workflowTransitionInformation, parser=parse_success)",
+      "http": "POST performWorkflowTransition/{type}/{id-or-path}",
+      "returns": "CascadeSuccess on success, CascadeError on failure"
+    },
+    "listMessages": {
+      "signature": "listMessages(parser=parse_list_elements)",
+      "http": "GET listMessages",
+      "returns": "ListElements on success, CascadeError on failure"
+    },
+    "markMessage": {
+      "signature": "markMessage(message: Message) -> None",
+      "http": "POST markMessage/Message/{id}",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Returns None, not Self."
+    },
+    "deleteMessage": {
+      "signature": "deleteMessage(message: Message) -> None",
+      "http": "POST deleteMessage/Message/{id}",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Returns None, not Self."
+    },
+    "readPreferences": {
+      "signature": "readPreferences(parser=parse_payloads)",
+      "http": "GET readPreferences",
+      "returns": "SimplePayload on success, CascadeError on failure"
+    },
+    "editPreference": {
+      "signature": "editPreference(payload: preference) -> None",
+      "http": "POST editPreference",
+      "returns": "CascadeSuccess on success, CascadeError on failure",
+      "notes": "Returns None, not Self."
+    }
+  },
+
+  "payload_models": {
+    "_note": "All inherit SimplePayload, whose @model_serializer format_builder wraps the body as {\"<lowercasedClassName>\": {...aliased fields...}}. Construct with the PYTHON field name or its alias (populate_by_name=True); the alias is what goes on the wire.",
+    "NewAsset": {
+      "required": ["name", "asset_type"],
+      "alternatives": [
+        "exactly one of site_name (alias siteName) or site_id (alias siteId)",
+        "exactly one of parent_folder_path (alias parentFolderPath) or parent_folder_id (alias parentFolderId)"
+      ],
+      "extra": "allow — asset-type-specific fields (title, xhtml, metadata...) pass straight through",
+      "serialization": "{\"asset\": {\"<asset_type>\": {...}}}; site_id/parent_folder_id emit bare hex; None values are dropped",
+      "error_if_violated": "ValueError('Provide exactly one of site_name or site_id') / ('Provide exactly one of parent_folder_path or parent_folder_id')"
+    },
+    "deleteParameters": {
+      "fields": {
+        "do_workflow": "bool, alias doWorkflow — required",
+        "destinations_identifiers": "list[IdentifierType], alias destinations — required",
+        "unpublish": "bool = True"
+      }
+    },
+    "copyParameters": {
+      "fields": {
+        "do_workflow": "bool, alias doWorkflow — required",
+        "new_name": "str, alias newName — required",
+        "destination_container_identifier": "IdentifierType, alias destinationContainerIdentifier — required"
+      }
+    },
+    "moveParameters": {
+      "fields": {
+        "destinations": "list[IdentifierType] — required",
+        "do_workflow": "bool, alias doWorkflow — required",
+        "destination_container_identifier": "IdentifierType, alias destinationContainerIdentifier — required",
+        "new_name": "str = \"\", alias newName — empty means no rename",
+        "unpublish": "bool = True"
+      }
+    },
+    "publishInformation": {
+      "fields": {"unpublish": "bool = True — set False to publish rather than unpublish"}
+    },
+    "SearchInformation": {
+      "fields": {
+        "siteName": "str — required",
+        "searchTerms": "str — required",
+        "searchFields": "list[FieldsSearchTypes], defaults to [\"\"] (all fields)",
+        "searchTypes": "list[AssetTypes], defaults to [\"\"] (all types)"
+      },
+      "FieldsSearchTypes": ["name", "path", "createdBy", "modifiedBy", "author", "description", "displayName", "keywords", "summary", "teaser", "title", "blob", "link", "velocityFormatContent", "xml"]
+    },
+    "Comment": {"fields": {"comment": "str — required"}},
+    "SiteCopyParameter": {
+      "fields": {
+        "original_sitename": "str | IdentifierType, alias originalSiteName — required",
+        "new_sitename": "str, alias newSiteName — required"
+      }
+    },
+    "workflowTransitionInformation": {
+      "fields": {
+        "workflow_identifier": "uuid.UUID, alias workflowId — required",
+        "action_identifier": "str, alias actionIdentifier — required",
+        "transition_comment": "str | None, alias transitionComment — required key"
+      }
+    },
+    "auditParameters": {
+      "fields": {
+        "auditType": "AuditTypes — required",
+        "by_identifier": "IdentifierType, alias identifier — required, MUST be of type user/role/group",
+        "by_username": "str | None, alias username",
+        "by_group": "str | None, alias groupname",
+        "by_role": "str | None, alias rolename",
+        "startDate": "datetime | None",
+        "endDate": "datetime | None"
+      },
+      "AuditTypes": ["login", "login_failed", "logout", "start_workflow", "advance_workflow", "edit", "startedit", "copy", "create", "reference", "delete", "delete_unpublish", "check_in", "check_out", "activate_version", "publish", "unpublish", "recycle", "restore", "move"]
+    },
+    "preference": {"fields": {"name": "str — required", "value": "str | None — required key"}},
+    "Message": {
+      "fields": {
+        "m_from": "str, alias from", "m_to": "str, alias to", "m_subject": "str, alias subject",
+        "m_date": "datetime, alias date", "m_id": "uuid.UUID, alias id",
+        "marked": "str = \"unread\", alias markType"
+      }
+    },
+    "accessRightsInformationPayload": {
+      "fields": {
+        "body": "AccessRightsModel {user_id(alias identifier): IdentifierType, acl_entries(alias aclEntries): list[Entries], allLevel: none|read|write}, alias accessRightsInformation — required",
+        "apply_to_children": "bool = False, alias applyToChildren"
+      }
+    },
+    "workflowSettingsPayload": {
+      "fields": {
+        "body": "WorkflowSettingsModel {identifier: IdentifierType, workflowDefinitions: list[IdentifierType], inheritedWorkflowDefinitions: list[IdentifierType], inheritWorkflows: bool, requireWorkflow: bool}, alias workflowSettings — required",
+        "applyInheritWorkflowsToChildren": "bool | None = False",
+        "applyRequireWorkflowToChildren": "bool | None = False"
+      }
+    }
+  },
+
+  "response_models": {
+    "Asset": "Dict-backed wrapper, NOT a Pydantic model. Read with .get(key), write with attribute assignment (asset.field = value) — there is no __setitem__/__getitem__. .asset_type property. get_data_structure() / get_page_configuration() return LIVE references. See references/asset_api.md.",
+    "CascadeSuccess": "{\"success\": true}. Frozen. The success return of every write operation.",
+    "CascadeError": "{\"success\": false, \"message\": str}. Frozen. Returned as a VALUE by any operation that fails.",
+    "IdentifierType": "See identifiers above. Returned by create.",
+    "CheckedOutAsset": "Frozen; .workingCopyIdentifier: IdentifierType. Returned by checkOut.",
+    "ListElements": "Frozen; .elements / .flat -> list[IdentifierType | Message | Audit]. Returned by all list-shaped endpoints.",
+    "workflowInformation": "Frozen. .related_entity, .current_step, .ordered_steps, .unordered_steps, .start_date, .end_date, .name, .workflow_info_id. Steps are TypedDicts: {step_identifier, label, step_type, actions, owner}; actions: {action_identifier, label, action_type, next_id}.",
+    "accessRightsInformationPayload": "See payload_models — same model is used for read and write.",
+    "workflowSettingsPayload": "See payload_models — same model is used for read and write."
+  },
+
+  "parsers": {
+    "parse_assets": "-> Asset",
+    "parse_success": "-> CascadeSuccess (default for write ops)",
+    "parse_create_asset": "-> IdentifierType (bound with pass_type by create)",
+    "parse_list_elements": "-> ListElements",
+    "parse_checked_out_asset": "-> CheckedOutAsset",
+    "parse_access_rights": "-> accessRightsInformationPayload",
+    "parse_workflow_settings": "-> workflowSettingsPayload",
+    "parse_workflow_information": "-> workflowInformation",
+    "parse_payloads": "-> SimplePayload",
+    "_note": "Every parser tries CascadeError FIRST and falls back to the success type. That is why failures arrive as values instead of exceptions."
+  },
+
+  "asset_types": [
+    "assetfactory", "assetfactorycontainer",
+    "block", "block_FEED", "block_INDEX", "block_TEXT", "block_XHTML_DATADEFINITION", "block_XML", "block_TWITTER_FEED",
+    "connectorcontainer", "facebookconnector", "googleanalyticsconnector", "twitterconnector", "wordpressconnector",
+    "contenttype", "contenttypecontainer",
+    "datadefinition", "datadefinitioncontainer",
+    "destination", "sitedestinationcontainer",
+    "editorconfiguration",
+    "file", "folder",
+    "format", "format_SCRIPT", "format_XSLT",
+    "metadataset", "metadatasetcontainer",
+    "page", "pageconfiguration", "pageconfigurationset", "pageconfigurationsetcontainer", "pageregion",
+    "publishset", "publishsetcontainer",
+    "reference", "site", "symlink", "target", "template",
+    "sharedfield", "sharedfieldcontainer",
+    "transport", "transport_cloud", "transport_db", "transport_fs", "transport_ftp", "transportcontainer",
+    "message",
+    "workflow", "workflowdefinition", "workflowdefinitioncontainer", "workflowemail", "workflowemailcontainer",
+    "group", "user", "role"
+  ],
+
+  "environment_and_config": {
+    "environment_variables": {
+      "API_KEY": "Cascade bearer token — required",
+      "CASCADE_URL": "base URL of the instance — required",
+      "SERVER": "label used in logfile naming — required"
+    },
+    "configuration_variables": "kwargs forwarded to the SQLiteBackend cache: cache_name, allowed_codes, allowed_methods, expire_after. Pass {} for defaults.",
+    "debug_config": "Optional 3rd arg to CascadeWrapperBase. Omit it (default None) for normal logging to ./logs/{SERVER}_{timestamp}.log. Debug mode requires a FULLY specified dict — every key present, no inferred defaults — and writes ./logs/{SERVER}_debug_{timestamp}.log."
+  }
+}

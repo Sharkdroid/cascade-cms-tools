@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Mutate structured-data nodes in a callback, then save.
+
+get_data_structure(group, identifier) returns matching nodes
+BY REFERENCE — mutating a returned node mutates the asset
+itself.
+
+One chain per target: `read(identifier).edit(identifier,
+update_contact)` reads the asset, then `edit()`'s callable
+payload (`update_contact`) is invoked with that result — it
+mutates and returns the asset, which is what gets saved.
+Nothing is sent until `submit_requests()` runs the whole
+batch.
+"""
+
+import os
+import uuid
+from typing import Any
+
+from cascade_cms.cmstypes import (
+    Asset,
+    CascadeError,
+    CascadeSuccess,
+    IdentifierType,
+)
+from cascade_cms.wrapper import CascadeWrapperBase
+
+# ----- Configuration -----
+environment_variables: dict[str, str] = {
+    "API_KEY": os.environ["CASCADE_API_KEY"],
+    "CASCADE_URL": os.environ["CASCADE_URL"],
+    "SERVER": os.environ.get("SERVER", "default"),
+}
+configuration_variables: dict[str, Any] = {
+    "cache_name": "./cache/cache.sqlite",
+    "allowed_codes": (200,),
+    "allowed_methods": ("GET",),
+}
+
+TARGETS: list[IdentifierType] = [
+    IdentifierType(
+        id=uuid.UUID("e868f539ac1001062cfa029c4c5df4d0"),
+        type="page",
+    ),
+]
+
+GROUP: str = "contact-block"
+FIELD: str = "phone"
+NEW_VALUE: str = "+1 555 0100"
+
+
+def update_contact(asset: Asset) -> Asset:
+    nodes = asset.get_data_structure(GROUP, FIELD)
+    for node in nodes or []:
+        # By reference: this edits the asset in place.
+        node["text"] = NEW_VALUE
+    return asset
+
+
+def main() -> None:
+    with CascadeWrapperBase(
+        environment_variables, configuration_variables
+    ) as cascade:
+        for identifier in TARGETS:
+            cascade.operations.read(identifier).edit(
+                identifier, update_contact
+            )
+
+        try:
+            results = cascade.submit_requests(
+                CascadeSuccess
+            )
+        except Exception as exc:
+            print(f"Batch failed: {exc}")
+            return
+
+        saved = sum(
+            1
+            for r in results
+            if not isinstance(r, (CascadeError, Exception))
+        )
+        print(f"Saved {saved}.")
+        for result in results:
+            if isinstance(result, CascadeError):
+                print(f"FAILED: {result.message}")
+            elif isinstance(result, Exception):
+                print(f"FAILED: {result}")
+
+
+if __name__ == "__main__":
+    main()
