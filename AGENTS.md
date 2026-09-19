@@ -63,8 +63,11 @@ Four rules the validator enforces and scripts must never break:
 - Everything is type-hinted: every function parameter and return, and every
   module-level variable (`environment_variables: dict[str, str] = {...}`).
 - No line is longer than 60 characters — code, comments and docstrings.
-  (`ruff format --line-length 60` handles code; strings and comments must be
-  wrapped by hand.)
+  **Never hand-wrap code.** After writing or editing a script, run
+  `./.conda/bin/ruff format --line-length 60 --isolated my_script.py`
+  *before* validating. Ruff cannot split strings, comments or
+  docstrings, so hand-wrap only the lines `validate_script.py` still
+  reports (and keep those short as you write them).
 
 ## Cross-checking schema with the MCP server
 
