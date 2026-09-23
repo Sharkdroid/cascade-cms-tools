@@ -12,13 +12,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -47,16 +49,11 @@ def main() -> None:
     ) as cascade:
         cascade.operations.read(TARGETS)
 
-        try:
-            results = cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        results = cascade.submit_requests(Asset)
 
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-                continue
+        # .success holds only the reads that succeeded;
+        # failures are reported by the wrapper at exit.
+        for result in results.success:
             path = result.get("path")
             title = result.get("title")
             print(f"{path} — {title}")

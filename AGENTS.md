@@ -14,6 +14,10 @@ conda create -y -p ./.conda python=3.13
 ./.conda/bin/pip install --upgrade cascade-cms-rest ruff
 ```
 
+Some machines use `./.venv` instead (same commands, substitute
+`./.venv/bin/...` for `./.conda/bin/...`). Use whichever of the two
+exists in your checkout.
+
 `build_release.py` bundles whatever `cascade-cms-rest` is *installed*, so
 always run it with `./.conda/bin/python`.
 
@@ -30,7 +34,7 @@ CI runs all three. Run them before considering a change done.
 
 ## Writing scripts that use cascade-cms-rest
 
-One skill, `skill/cascade-script-writer/` — 21 templates, full JSON schema.
+One skill, `skill/cascade-script-writer/` — 20 templates, full JSON schema.
 There is no smaller "lite" variant; see `docs/why-no-lite-skill.md` for why,
 and `docs/model-requirements.md` for the model-capability floor this skill
 assumes. A companion read-only MCP server (`mcp/`) is also available for
@@ -61,7 +65,7 @@ Four rules the validator enforces and scripts must never break:
 - `Asset` fields are written by attribute (`asset.keywords = value`), never by
   subscript (`asset["keywords"] = value` raises `TypeError`).
 - Everything is type-hinted: every function parameter and return, and every
-  module-level variable (`environment_variables: dict[str, str] = {...}`).
+  module-level variable (`environment_variables: EnvironmentVars = {...}`).
 - No line is longer than 60 characters — code, comments and docstrings.
   **Never hand-wrap code.** After writing or editing a script, run
   `./.conda/bin/ruff format --line-length 60 --isolated my_script.py`

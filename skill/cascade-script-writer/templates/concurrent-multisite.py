@@ -10,15 +10,17 @@ import os
 from typing import Any
 
 from cascade_cms.cmstypes import (
-    CascadeError,
     IdentifierType,
     ListElements,
     SearchInformation,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -40,26 +42,20 @@ def main() -> None:
         for site in SITES:
             cascade.operations.search(
                 SearchInformation(
-                    siteName=site,
-                    searchTerms=SEARCH_TERM,
-                    searchTypes=["page"],
+                    site_name=site,
+                    search_terms=SEARCH_TERM,
+                    search_types=["page"],
                 )
             )
 
-        try:
-            results = cascade.submit_requests(ListElements)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        results = cascade.submit_requests(ListElements)
 
-        # Results arrive in completion order, so they cannot
-        # be zipped back to SITES by position — report
+        # Results are in queue order (one per site), so a
+        # complete run can be zipped with SITES. Failed
+        # sites are excluded from .success, so this reports
         # totals instead of per-site attribution.
         total = 0
-        for container in results:
-            if isinstance(container, CascadeError):
-                print(f"FAILED: {container.message}")
-                continue
+        for container in results.success:
             total += sum(
                 1
                 for e in container.flat

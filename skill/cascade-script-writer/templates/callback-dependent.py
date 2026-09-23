@@ -14,15 +14,17 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     CascadeSuccess,
     IdentifierType,
     publishInformation,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -43,9 +45,7 @@ TARGETS: list[IdentifierType] = [
 ready_to_publish: list[IdentifierType] = []
 
 
-def collect_published(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        return
+def collect_published(result: Asset) -> None:
     if result.get("shouldBePublished"):
         path = result.get("path")
         site = result.get("siteName")
@@ -66,10 +66,10 @@ def main() -> None:
             collect_published
         )
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Read failed: {exc}")
+        reads = cascade.submit_requests(Asset)
+        # A failed read does not stop the block; skip the
+        # publish so it never runs on a partial set.
+        if reads.failed:
             return
 
         if not ready_to_publish:
@@ -81,19 +81,9 @@ def main() -> None:
             publishInformation(unpublish=False),
         )
 
-        try:
-            results = cascade.submit_requests(
-                CascadeSuccess
-            )
-        except Exception as exc:
-            print(f"Publish failed: {exc}")
-            return
+        results = cascade.submit_requests(CascadeSuccess)
 
-        ok = sum(
-            1
-            for r in results
-            if not isinstance(r, CascadeError)
-        )
+        ok = len(results.success)
         print(f"Published {ok}.")
 
 

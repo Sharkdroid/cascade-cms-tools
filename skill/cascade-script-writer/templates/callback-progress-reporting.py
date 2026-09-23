@@ -2,10 +2,11 @@
 """Report progress from a callback.
 
 Progress is a count of completions, not a position in the
-submitted list: results arrive in COMPLETION order, so "item
-3 of 10" refers to the third result to finish, not the third
-asset queued. Print counts, never indexes into the request
-list.
+submitted list: chains finish in any order, so "3 of 10"
+means the third to finish, not the third asset queued.
+Print counts, never indexes into the request list. A read
+that fails never reaches the callback; the wrapper tallies
+it at exit.
 """
 
 import os
@@ -15,13 +16,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -44,14 +47,12 @@ TARGETS: list[IdentifierType] = [
 ]
 
 _lock: threading.Lock = threading.Lock()
-_state: dict[str, int] = {"done": 0, "errors": 0}
+_state: dict[str, int] = {"done": 0}
 
 
-def report_progress(result: Asset | CascadeError) -> None:
+def report_progress(result: Asset) -> None:
     with _lock:
         _state["done"] += 1
-        if isinstance(result, CascadeError):
-            _state["errors"] += 1
         done = _state["done"]
     print(f"[{done}/{len(TARGETS)}] completed")
 
@@ -64,16 +65,9 @@ def main() -> None:
             report_progress
         )
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        cascade.submit_requests(Asset)
 
-        print(
-            f"Done: {_state['done']} completed, "
-            f"{_state['errors']} failed."
-        )
+        print(f"Done: {_state['done']} completed.")
 
 
 if __name__ == "__main__":

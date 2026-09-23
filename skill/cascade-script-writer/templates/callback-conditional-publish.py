@@ -14,15 +14,17 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     CascadeSuccess,
     IdentifierType,
     publishInformation,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -48,9 +50,7 @@ _lock: threading.Lock = threading.Lock()
 to_publish: list[IdentifierType] = []
 
 
-def select_stale(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        return
+def select_stale(result: Asset) -> None:
     if result.get("shouldBePublished") and not result.get(
         "published"
     ):
@@ -72,11 +72,7 @@ def main() -> None:
     ) as cascade:
         cascade.operations.read(TARGETS).then(select_stale)
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Read pass failed: {exc}")
-            return
+        cascade.submit_requests(Asset)
 
         if not to_publish:
             print("Nothing needs publishing.")
@@ -86,19 +82,9 @@ def main() -> None:
             to_publish, publishInformation(unpublish=False)
         )
 
-        try:
-            results = cascade.submit_requests(
-                CascadeSuccess
-            )
-        except Exception as exc:
-            print(f"Publish pass failed: {exc}")
-            return
+        results = cascade.submit_requests(CascadeSuccess)
 
-        ok = sum(
-            1
-            for r in results
-            if not isinstance(r, CascadeError)
-        )
+        ok = len(results.success)
         print(f"Published {ok}/{len(to_publish)}.")
 
 

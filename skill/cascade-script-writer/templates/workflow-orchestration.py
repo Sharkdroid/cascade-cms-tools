@@ -8,16 +8,19 @@ import uuid
 from typing import Any
 
 from cascade_cms.cmstypes import (
-    CascadeError,
     CascadeSuccess,
     IdentifierType,
+    WorkflowAction,
     workflowInformation,
     workflowTransitionInformation,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -36,12 +39,12 @@ DESIRED_ACTION: str = "approve"
 
 
 def build_transition(
-    info: workflowInformation, action: dict[str, Any]
+    info: workflowInformation, action: WorkflowAction
 ) -> workflowTransitionInformation:
     return workflowTransitionInformation(
-        workflowId=info.workflow_info_id,
-        actionIdentifier=action["action_identifier"],
-        transitionComment="Advanced by automation.",
+        workflow_identifier=info.workflow_info_id,
+        action_identifier=action.action_identifier,
+        transition_comment="Advanced by automation.",
     )
 
 
@@ -51,27 +54,22 @@ def main() -> None:
     ) as cascade:
         cascade.operations.readWorkflowInformation(TARGET)
 
-        try:
-            infos = cascade.submit_requests(
-                workflowInformation
-            )
-        except Exception as exc:
-            print(f"Workflow read failed: {exc}")
+        infos = cascade.submit_requests(workflowInformation)
+        # A failed read does not stop the block; skip the
+        # transitions so they never run on partial data.
+        if infos.failed:
             return
 
         transitions = []
-        for info in infos:
-            if isinstance(info, CascadeError):
-                print(f"FAILED: {info.message}")
-                continue
+        for info in infos.success:
             # Only steps in the current position expose
             # usable actions.
             for step in info.ordered_steps:
-                if step["label"] != info.current_step:
+                if step.label != info.current_step:
                     continue
-                for action in step["actions"]:
+                for action in step.actions:
                     if (
-                        action["action_identifier"]
+                        action.action_identifier
                         != DESIRED_ACTION
                     ):
                         continue
@@ -91,19 +89,11 @@ def main() -> None:
                 TARGET, payload
             )
 
-        try:
-            results = cascade.submit_requests(
-                CascadeSuccess
-            )
-        except Exception as exc:
-            print(f"Transition failed: {exc}")
-            return
+        results = cascade.submit_requests(CascadeSuccess)
 
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-            else:
-                print("Workflow advanced.")
+        print(
+            f"Advanced {len(results.success)} workflow(s)."
+        )
 
 
 if __name__ == "__main__":

@@ -16,13 +16,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -46,10 +48,8 @@ TARGETS: list[IdentifierType] = [
 
 
 async def notify_downstream(
-    result: Asset | CascadeError,
+    result: Asset,
 ) -> None:
-    if isinstance(result, CascadeError):
-        return
     # Stand-in for a real awaitable call (aiohttp POST,
     # async queue publish...).
     await asyncio.sleep(0)
@@ -64,10 +64,7 @@ def main() -> None:
             notify_downstream
         )
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
+        cascade.submit_requests(Asset)
 
 
 if __name__ == "__main__":

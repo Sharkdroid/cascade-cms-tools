@@ -18,13 +18,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -47,12 +49,10 @@ TARGETS: list[IdentifierType] = [
 ]
 
 
-def analyze_content(result: Asset | CascadeError) -> None:
+def analyze_content(result: Asset) -> None:
     """Deliberately CPU-heavy work — the reason for a
     process pool.
     """
-    if isinstance(result, CascadeError):
-        return
     body = result.get("xhtml") or ""
     word_count = len(body.split())
     checksum = sum(ord(c) for c in body) % 100000
@@ -73,12 +73,9 @@ def main() -> None:
         with ProcessPoolExecutor(
             max_workers=os.cpu_count()
         ) as executor:
-            try:
-                cascade.submit_requests(
-                    Asset, executor=executor
-                )
-            except Exception as exc:
-                print(f"Request submission failed: {exc}")
+            cascade.submit_requests(
+                Asset, executor=executor
+            )
 
 
 if __name__ == "__main__":

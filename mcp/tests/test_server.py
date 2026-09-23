@@ -597,3 +597,115 @@ def test_cascade_list_sites_raises_tool_error_on_cascade_error(patch_wrapper):
 
     with pytest.raises(ToolError, match="listSites unavailable"):
         server.cascade_list_sites()
+
+
+def test_wrapper_disables_exit_on_failure(monkeypatch):
+    captured = {}
+
+    class _Spy:
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setenv("CASCADE_API_KEY", "k")
+    monkeypatch.setenv("CASCADE_URL", "https://example.test")
+    monkeypatch.setattr(server, "CascadeWrapperBase", _Spy)
+
+    server._wrapper()
+
+    assert captured["exit_on_failure"] is False
+
+
+def test_wrapper_missing_credentials_is_tool_error_not_system_exit(monkeypatch):
+    monkeypatch.delenv("CASCADE_API_KEY", raising=False)
+    monkeypatch.delenv("CASCADE_URL", raising=False)
+
+    with pytest.raises(ToolError, match="CASCADE_API_KEY"):
+        server._wrapper()
+
+
+def test_batch_error_becomes_tool_error(monkeypatch):
+    from cascade_cms.failures import CascadeBatchError
+
+    class _Broken(_FakeWrapper):
+        def submit_requests(self, *args, **kwargs):
+            try:
+                raise ConnectionError("refused")
+            except ConnectionError as cause:
+                raise CascadeBatchError("batch broke") from cause
+
+    monkeypatch.setattr(server, "_wrapper", lambda: _Broken([]))
+
+    with pytest.raises(ToolError, match="ConnectionError: refused"):
+        server.cascade_search(query="foo", site="example-site")
+
+
+def test_failed_read_with_real_wrapper_is_tool_error(monkeypatch):
+    """Acceptance #10: real CascadeWrapperBase (stub driver) with
+    exit_on_failure=False turns a CascadeError read into a ToolError; no
+    SystemExit escapes.
+
+    Copied from py-cascade-cms tests/test_wrapper.py (StubDriver and
+    make_wrapper). make_wrapper bypasses __init__ and sets three private
+    attributes: _callback_failures, _has_reportable_failure and
+    _exit_on_failure. If the library renames one, this test breaks here
+    first - re-sync it from that file.
+    """
+    import asyncio
+
+    from cascade_cms.operation_logger import OperationLogger
+    from cascade_cms.operations import Operations
+    from cascade_cms.wrapper import CascadeWrapperBase
+
+    class StubDriver:
+        base_url = "https://example.test/api/v1"
+
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.eventLoop = asyncio.new_event_loop()
+
+        def _build_url(self, *segments):
+            return "/".join([self.base_url, *map(str, segments)])
+
+        async def execute_requests(self, requests):
+            return self.responses.pop(0)
+
+        def close(self):
+            self.eventLoop.close()
+
+    def make_wrapper():
+        driver = StubDriver(
+            [[CascadeError(success=False, message="not found")]]
+        )
+        wrapper = object.__new__(CascadeWrapperBase)
+        wrapper._driver = driver
+        wrapper._logger = MagicMock(spec=OperationLogger)
+        wrapper.operations = Operations(driver, _logger=wrapper._logger)
+        wrapper._callback_failures = []
+        wrapper._has_reportable_failure = False
+        wrapper._exit_on_failure = False
+        return wrapper
+
+    monkeypatch.setattr(server, "_wrapper", make_wrapper)
+
+    with pytest.raises(ToolError, match="not found"):
+        server.cascade_read_asset(identifier=_identifier())
+
+
+def test_mcp_source_only_queues_read_operations():
+    """Read-only guard: every `.operations.<name>` in the MCP package
+    must be a read operation. A new write operation fails this test."""
+    import ast
+
+    read_only = {"read", "search", "listSites"}
+    used: set[str] = set()
+    for path in Path(server.__file__).parent.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "operations"
+            ):
+                used.add(node.attr)
+
+    assert used, "guard found no operations - is it still scanning?"
+    assert used <= read_only, f"non-read operations: {used - read_only}"

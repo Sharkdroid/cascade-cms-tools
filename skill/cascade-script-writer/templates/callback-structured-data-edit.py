@@ -19,14 +19,16 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     CascadeSuccess,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -66,25 +68,9 @@ def main() -> None:
                 identifier, update_contact
             )
 
-        try:
-            results = cascade.submit_requests(
-                CascadeSuccess
-            )
-        except Exception as exc:
-            print(f"Batch failed: {exc}")
-            return
+        results = cascade.submit_requests(CascadeSuccess)
 
-        saved = sum(
-            1
-            for r in results
-            if not isinstance(r, (CascadeError, Exception))
-        )
-        print(f"Saved {saved}.")
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-            elif isinstance(result, Exception):
-                print(f"FAILED: {result}")
+        print(f"Saved {len(results.success)}.")
 
 
 if __name__ == "__main__":

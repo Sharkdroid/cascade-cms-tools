@@ -1,0 +1,518 @@
+ERROR HANDLING REDESIGN - CLAUDE CODE HANDOFF PLAN
+Date: 2026-09-23
+Repos: py-cascade-cms (library), cascade-cms-tools (skill + MCP),
+       Sharkdroid.github.io (wiki: wiki/cascade-cms-wiki/)
+Library baseline: cascade-cms-rest 3.1.6 (src.zip / py-cascade-cms-master)
+Skill baseline: cascade-cms-tools v0.2.4 (dist/cascade-cms-tools-skill-024.zip)
+
+
+======================================================================
+0. HOW TO USE THIS PLAN
+======================================================================
+
+- Work the phases IN ORDER. Phase 1 (library) must be released before
+  Phases 2 and 3 can bundle or pin it. Phase 4 (wiki) is REQUIRED and is
+  part of the definition of done.
+- Section 3 lists ASSUMPTIONS that Keith has not yet confirmed. Implement
+  them as written, but list each one in your report-back so Keith can
+  accept or change it. Do not silently choose differently.
+- Where this plan and the source disagree, STOP, note the discrepancy
+  in your report-back, and do not guess.
+- Every step has a checkbox. Tick it only when the acceptance line under
+  it is true.
+
+
+======================================================================
+1. GOAL
+======================================================================
+
+Failure handling moves out of user scripts and into the library:
+
+  1. No user-written try/except around submit_requests(). The context
+     manager in wrapper.py owns error handling.
+  2. No user-written isinstance() checks. submit_requests() returns a
+     results object with .ok and .failed.
+  3. One call per batch is preserved: queue operations (e.g. read(id)),
+     then a single submit_requests().
+  4. At exit the context manager prints a tally and the script exits
+     non-zero when anything failed.
+
+
+======================================================================
+2. LOCKED DESIGN DECISIONS
+======================================================================
+
+D1  The context manager (CascadeWrapperBase.__exit__) owns failure
+    reporting and the exit code.
+
+D2  submit_requests() returns ChainResults, a list SUBCLASS. Indexing,
+    iteration and len() are unchanged. It adds:
+      .ok      list of results from chains that did not fail
+               (typed from result_type, so submit_requests(Asset).ok
+               is list[Asset])
+      .failed  list of ChainFailure records (see D5)
+
+D3  .ok and .failed are properties on the object submit_requests()
+    already returns. There is no second call to collect them.
+
+D4  Raw result values stay in the list unchanged (CascadeError objects,
+    Exception objects). The CascadeError model itself does not change
+    (frozen, extra="forbid", success: Literal[False]).
+
+D5  Failures are classified by WHERE the chain stopped and by exception
+    type. Never by exception type alone.
+
+      Stopped at an OPERATION step:
+        CascadeError                  -> category CASCADE
+                                         (API rejected the request;
+                                         no new prefix)
+        Network exception             -> category NETWORK
+                                         prefix [NETWORK]
+        Any other exception           -> category LIBRARY
+        (Pydantic validation/parse errors, request-building errors, etc.)
+                                         prefix [CASCADE-REST-CMS]
+
+      Stopped at a CALLBACK step:
+        Any exception                 -> category CALLBACK
+                                         (user code; no prefix)
+
+    Network exception means ANY of:
+      - aiohttp.ClientError or a subclass
+      - any exception whose class is defined in the aiohttp package
+        (check type(exc).__module__ starts with "aiohttp")
+      - builtin TimeoutError (this includes asyncio.TimeoutError)
+      - ConnectionError
+    Keep the matcher in ONE function so the list is easy to extend.
+
+D6  Batch-level failure (the run itself breaks): submit_requests() logs
+    it, then RAISES CascadeBatchError (chained with "from" to the
+    original). It no longer swallows the error and returns []. An empty
+    queue still returns an empty ChainResults without error.
+
+D7  CascadeWrapperBase.__init__ gains exit_on_failure: bool = True.
+
+D8  __exit__ behavior (cleanup - log_exit() and driver.close() - always
+    runs first, exactly as today, including its own try/except):
+
+      Exception in flight is CascadeBatchError:
+        exit_on_failure True  -> raise SystemExit(1). No traceback; the
+                                 message was already logged.
+        exit_on_failure False -> propagate unchanged.
+      Any other exception in flight (bug in user code, etc.):
+        propagate unchanged. Normal traceback, natural exit code 1.
+      KeyboardInterrupt / SystemExit in flight:
+        propagate untouched.
+      No exception, callback failures recorded, exit_on_failure True:
+        tally already printed; raise the FIRST callback exception (in
+        chain creation order) as a plain exception, unwrapped.
+      No exception, CASCADE/NETWORK/LIBRARY failures recorded,
+      exit_on_failure True:
+        tally already printed; raise SystemExit(1).
+      No failures:
+        return normally (exit code 0).
+      exit_on_failure False:
+        cleanup and tally only. Never raise. Results stay available to
+        the caller as values.
+
+    If both callback and library-scope failures exist, the callback
+    exception is raised (its traceback also yields exit code 1).
+
+D9  Tally line, printed at exit by the logger, ALWAYS:
+        "{failed} failed, {succeeded} succeeded"
+    Append ": reference log for details" ONLY when at least one failure
+    is category CASCADE, NETWORK or LIBRARY. Counts are cumulative
+    across every batch in the session. This line REPLACES the current
+    "[ERRORS]: N failures - check <logfile>" line in log_exit().
+
+D10 Code after the `with` block does not run when the script exits
+    because of a failure (consequence of SystemExit / raise in
+    __exit__). This must be documented (docstring + wiki).
+
+D11 The MCP server passes exit_on_failure=False. SystemExit is not an
+    Exception subclass and must never escape an MCP tool call.
+
+D12 Callback exceptions and user-code exceptions are NOT the library's
+    scope: they surface as plain exceptions, never wrapped, never given
+    a library prefix.
+
+
+======================================================================
+3. ASSUMPTIONS - NEED KEITH'S CONFIRMATION
+======================================================================
+
+Implement as written; flag each in the report-back.
+
+A1  Prefix placement. [NETWORK] and [CASCADE-REST-CMS] appear on the
+    chain's "!ERROR:" line in the logfile, for example:
+        !ERROR: [NETWORK] ClientConnectorError: <message> @file.py:123
+    and on the console "[ERROR]" line for batch-level failures. The
+    prefixes do NOT appear on the tally line.
+
+A2  The logfile name is not added to the tally line (keeps the wording
+    Keith asked for).
+
+A3  A chain stopped at a callback counts in "failed" (the x) but does
+    not by itself trigger the ": reference log for details" suffix.
+
+A4  A multi-item node (list create/edit) whose result list contains
+    errors does NOT stop the chain (existing behavior, keep it). The
+    chain is recorded as failed once, with the category of the first
+    error inside the list, and is excluded from .ok.
+
+A5  Version bump: recommend 4.0.0 (two breaking behaviors: batch
+    failures now raise, and exit_on_failure defaults to True). Keith
+    decides before release.
+
+A6  New public types live in a new module, cascade_cms/failures.py, and
+    are NOT added to cascade_cms/__init__.py (the narrowed exports are a
+    deliberate earlier decision). Users import from cascade_cms.failures.
+
+A7  A broken batch counts every chain in that batch as failed in the
+    tally.
+
+A8  Non-Exception results from asyncio.gather(return_exceptions=True)
+    (e.g. CancelledError, a BaseException) are classified as category
+    LIBRARY.
+
+
+======================================================================
+4. NON-GOALS
+======================================================================
+
+- Do NOT add the validate_script.py error-handling check. It is on hold
+  until this design is settled and verified.
+- Do NOT change Approach A fan-out (one chain per identifier).
+- Do NOT change the CascadeError / CascadeSuccess models.
+- Do NOT add retries, backoff, or workflow abstraction. The library
+  stays lean; users own orchestration.
+- Do NOT add a lite skill or change the one-full-skill decision.
+- Do NOT refactor unrelated code in operations.py, driver.py, cmstypes.py.
+- Do NOT touch the wiki's hand-curated getting-started/ and maintenance/
+  pages beyond the specific edits in Phase 4.
+
+
+======================================================================
+5. PRE-FLIGHT CHECKS (before writing code)
+======================================================================
+
+[ ] P1  Run the baseline: pytest, ruff check ., mypy src/. Record
+        results. All must be green before you start.
+[ ] P2  Confirm OperationChain.execute() and execute_async() both call
+        _stopped() from four sites each (request-build failure, driver
+        failure, operation-result stop, callback failure). Both must be
+        changed in the same way.
+[ ] P3  grep the library and cascade-cms-tools repos for anything that
+        relies on submit_requests() returning [] on failure or on the
+        try/except pattern. List every hit in the report-back.
+[ ] P4  Read tests/test_operation_logger.py around the log_batch_end /
+        log_exit / _error_count assertions (roughly lines 310-380). They
+        will need updating.
+[ ] P5  Confirm wrapper.py has no existing test file (tests/ has no
+        test_wrapper.py). You will create one.
+
+
+======================================================================
+6. PHASE 1 - LIBRARY (py-cascade-cms)
+======================================================================
+
+[ ] 1.1  New module src/cascade_cms/failures.py containing:
+           - FailureCategory: CASCADE, NETWORK, LIBRARY, CALLBACK
+           - ChainFailure (dataclass): chain index, identifier, step
+             number (1-based), step name, node type, category, the
+             original error object, and a display message
+           - CascadeBatchError(Exception)
+           - classify_failure(node_type, error) -> FailureCategory
+             using the D5 rules, with the network matcher in one
+             function
+           - ChainResults: list subclass with .ok and .failed, generic
+             over the result type
+         Accept: module imports with no circular imports; mypy clean.
+
+[ ] 1.2  OperationChain records failure metadata.
+           - _stopped() receives the node (or node type) so it can
+             record a ChainFailure on the chain (e.g. chain.failure).
+           - Update all call sites in BOTH execute() and
+             execute_async().
+           - The value returned by _stopped() stays the raw error
+             (unchanged behavior for anyone reading the list).
+           - Multi-item nodes (A4): when _resolve_operation_result finds
+             errors inside a multi list, record a partial failure on the
+             chain; the chain keeps running.
+         Accept: existing chain tests still pass unmodified; new tests
+         show the failure record has the right step and category.
+
+[ ] 1.3  Prefix in the logfile (A1). Where the "!ERROR:" message is built
+         (_error_location and the flush_chain_error path), prepend
+         [NETWORK] or [CASCADE-REST-CMS] according to the category.
+         CASCADE and CALLBACK failures get no prefix.
+         Accept: log output tests cover all four categories.
+
+[ ] 1.4  wrapper.py: submit_requests().
+           - Build and return ChainResults with the chains' failure
+             records, in chain creation order.
+           - Update both @overload signatures: with result_type the
+             return is ChainResults[T]; without it, the existing union.
+           - Batch-level exception: log via the logger (console line
+             "[ERROR]" with the [CASCADE-REST-CMS] prefix), record the
+             batch as failed (A7), then raise CascadeBatchError from the
+             original. Keep the finally: _reset_chains().
+           - Empty queue: return an empty ChainResults.
+           - Handle BaseException entries from gather (A8).
+           - Fix the tally: count a chain as succeeded only if it has
+             no failure record (this also fixes list results with errors
+             inside being counted as successes today).
+         Accept: submit_requests() never returns [] for a failure.
+
+[ ] 1.5  operation_logger.py: tally and exit line.
+           - Track cumulative failed/succeeded counts and whether any
+             CASCADE/NETWORK/LIBRARY failure occurred.
+           - Rewrite log_exit(): keep [DONE] and [EXIT]; replace the
+             "[ERRORS]" line with the D9 tally line, always printed.
+           - Keep log_batch_end() working for existing callers/tests,
+             or update those tests consistently.
+         Accept: exact strings verified in tests:
+           "0 failed, 5 succeeded"
+           "2 failed, 3 succeeded: reference log for details"
+           "1 failed, 4 succeeded" when the only failure is a callback.
+
+[ ] 1.6  wrapper.py: CascadeWrapperBase.__init__ and __exit__.
+           - Add exit_on_failure: bool = True.
+           - Rewrite __exit__ per D8.
+           - REMOVE the existing RuntimeWarning check. It is dead code:
+             it calls isinstance() on exc_type (a class, not an
+             instance), so it can never be true, and both branches
+             propagate the exception anyway. The docstring's claim about
+             a RuntimeWarning carve-out is wrong; correct it.
+           - Cleanup (log_exit, driver.close) must run before any raise.
+           - Store callback failures cumulatively across batches so the
+             deferred raise works with multiple submit_requests() calls.
+         Accept: every D8 row has a test.
+
+[ ] 1.7  Docstrings. Update submit_requests(), CascadeWrapperBase, and the
+         OperationChain class docstring. The OperationChain docstring
+         says a failure "names the exact step"; make that true through
+         ChainFailure and state clearly that the step name is on the
+         failure record and in the log. Document D10 prominently.
+
+[ ] 1.8  Tests. Create tests/test_wrapper.py and extend existing files.
+         Use a stubbed driver (see tests/test_operation_chains.py
+         fixtures; a scratch probe with a stub execute_requests worked
+         well). Cover:
+           - D5 classification, parametrized: CascadeError; aiohttp
+             ClientConnectorError; TimeoutError; ConnectionError;
+             pydantic ValidationError; ValueError at an operation step;
+             any exception at a callback step; a CancelledError entry.
+           - Every D8 row, using pytest.raises(SystemExit) and checking
+             .value.code == 1.
+           - Batch failure raises CascadeBatchError; queue is cleared.
+           - Callback exception: other chains finish first; tally
+             printed; the first callback exception raised unwrapped.
+           - User-code exception propagates untouched; cleanup ran.
+           - exit_on_failure=False never raises.
+           - Tally strings (see 1.5) and cumulative counts across two
+             submit_requests() calls in one with-block.
+           - ChainResults: still a list; .ok / .failed correct;
+             multi-item partial failure excluded from .ok.
+           - One subprocess test asserting the real process exit code is
+             1 on failure and 0 on success.
+         Accept: pytest, ruff check ., mypy src/ all green.
+
+[ ] 1.9  Docs in the repo: README.md (examples near lines 27, 56, 70
+         and the results behavior), AGENTS.md if it describes error
+         handling, CHANGELOG.md.
+           - CHANGELOG entry: Changed / Added / Removed, marked BREAKING
+             for the two behavior changes, with a "Files changed:" line
+             per the AGENTS.md convention.
+           - Version bump per A5 (Keith decides).
+
+[ ] 1.10 Release the library (PUBLISHING.md). Later phases depend on the
+         PUBLISHED package, not a local copy.
+
+
+======================================================================
+7. PHASE 2 - MCP SERVER (cascade-cms-tools/mcp)
+======================================================================
+
+[ ] 2.1  server.py _wrapper(): construct
+         CascadeWrapperBase(..., exit_on_failure=False).
+         Accept: a test asserts _wrapper() sets exit_on_failure False.
+         This is a regression guard - SystemExit must never escape a
+         tool call.
+
+[ ] 2.2  A batch failure now raises CascadeBatchError inside the tools'
+         `with _wrapper()` blocks. Confirm it reaches the existing
+         "except Exception" path and produces a clean ToolError. If the
+         message is unhelpful, add a dedicated mapping in errors.py.
+         Add a test in test_server.py / test_errors.py.
+
+[ ] 2.3  Confirm errors.single_result() works with ChainResults.
+
+[ ] 2.4  Bump the pin in mcp/pyproject.toml
+         (currently cascade-cms-rest>=3.1.3) to the new release.
+
+[ ] 2.5  Run mcp/tests and smoke_test.py.
+
+
+======================================================================
+8. PHASE 3 - SKILL PACKAGE (cascade-cms-tools/skill/cascade-script-writer)
+======================================================================
+
+Stale claims found in the current skill (verified against library
+source and CHANGELOG):
+  S1  "Results come back in COMPLETION order" - wrong. Results are in
+      chain CREATION order (and, with fan-out, one per identifier).
+  S2  "Failed requests are logged and DROPPED; len(results) may be
+      smaller" - wrong. One entry per chain, failures included.
+  S3  "Wrap submit_requests() in try/except" - it never raises today
+      and, after this change, the context manager owns failures.
+  S4  "A callback that raises is logged and swallowed" - wrong. The
+      chain stops and the exception is the chain's result.
+  S5  Templates check only isinstance(x, CascadeError); callback
+      exceptions come back as Exception values.
+
+[ ] 3.1  SKILL.md.
+           - Remove the try/except rule: the checklist item (~line 73),
+             the conventions bullet (~line 233) and the example blocks
+             (~lines 189, 270, 318), plus the "structure" line (~40).
+           - Rewrite "What the library actually does": creation-order
+             results (zip against inputs is now fine), failures are
+             included in the list, .ok / .failed usage, no isinstance
+             in scripts, exit_on_failure default and D10 (code after the
+             with block does not run on failure), the tally line, the
+             [NETWORK] / [CASCADE-REST-CMS] prefixes in the logfile.
+           - Keep the 60-char line limit rules and everything unrelated.
+
+[ ] 3.2  references/operations_schema.json key_behaviors: rewrite
+         "completion_order" (rename, e.g. "result_order"),
+         "errors_are_values", "callbacks" (S4), and add the exit
+         behavior. BEFORE renaming any key, grep scripts/ (the
+         validator loads this file) to confirm nothing reads the old
+         key names.
+
+[ ] 3.3  All 21 templates in templates/:
+           - Remove the try/except around submit_requests().
+           - Replace isinstance(x, CascadeError) loops with
+             results.ok / results.failed.
+           - Callbacks that follow a single-request read are typed
+             Asset (drop "| CascadeError" and the dead early-return
+             guards). Callbacks that follow a LIST create/edit still
+             receive a list that may contain errors; keep a guard there
+             and say why in a comment.
+           - Fix the completion-order wording in callback-type-dispatch,
+             callback-progress-reporting and concurrent-multisite.
+           - Rewrite callback-error-isolation.py: it should now show a
+             callback catching its own per-item errors locally (tolerant
+             processing) and explain that an uncaught callback exception
+             stops that chain and is raised at exit after other chains
+             finish.
+           - Update templates/INDEX.md wording where it mentions
+             success/failure handling.
+           - Every template must still pass validate_script.py as
+             written (60-char lines, full type hints).
+
+[ ] 3.4  grep the whole skill/ tree, README.md, AGENTS.md and docs/ for
+         leftover stale phrases: "COMPLETION", "completion order",
+         "dropped", "DROPPED", "swallow", "try/except", and
+         "isinstance(.*CascadeError". Also check references/asset_api.md.
+
+[ ] 3.5  Rebuild the release bundle with build_release.py AFTER upgrading
+         the installed cascade-cms-rest (see AGENTS.md "Rebuilding the
+         release bundle"). release.yml re-validates every template
+         unattended, so repair templates locally FIRST. Bump the tools
+         version and regenerate dist/cascade-cms-tools-skill-<version>.zip.
+         Do not copy the skill snapshot by hand.
+
+[ ] 3.6  Confirm validate_script.py still passes every template and that
+         NO error-handling check was added (non-goal).
+
+
+======================================================================
+9. PHASE 4 - WIKI  ** REQUIRED - DO NOT SKIP **
+======================================================================
+
+REMINDER: This new behavior MUST be documented in the wiki
+(Sharkdroid/Sharkdroid.github.io, wiki/cascade-cms-wiki/). The work is
+NOT done until the wiki PR is merged. All narrative pages go through a
+PR for manual review.
+
+[ ] 4.1  New page (recommended: error-handling.md, added to the nav in
+         the wiki's properdocs.yml) covering:
+           - failures are values vs. what raises
+           - ChainResults: .ok / .failed, still a list
+           - the tally line and when the ": reference log for details"
+             suffix appears
+           - failure categories and the [NETWORK] / [CASCADE-REST-CMS]
+             prefixes (with the network exception definition)
+           - exit codes and exit_on_failure (default True; False for
+             embedding, e.g. the MCP server)
+           - callback exceptions raised as plain exceptions at exit
+           - CascadeBatchError
+           - the consequence that code after the with block does not run
+             when the script exits because of a failure
+           - multi-batch scripts: the tally is cumulative
+
+[ ] 4.2  Update existing pages: fluent-pattern.md (submit_requests
+         return type), logging/index.md (tally line, prefixes, the
+         !ERROR: format, the replaced [ERRORS] line), all-operations.md
+         if any example uses try/except around submit_requests().
+
+[ ] 4.3  Docs automation. wrapper.py is a doc-drift watched file, so the
+         new exit_on_failure parameter will trigger docs-drift.yml; review
+         the PR it opens. Decide with Keith whether to add failures.py
+         to the watch list and doc_mapping.yml (kept library-side).
+         After the version bump, the "synthesized-for" footer check will
+         flag a mismatch; regenerate narrative pages (or use the force
+         override) so the deployed docs match the release.
+
+[ ] 4.4  Flag for Keith: the hand-curated getting-started/ pages likely
+         show try/except or isinstance patterns. They are deferred to a
+         separate conversation; list which ones need edits, do not edit
+         them.
+
+
+======================================================================
+10. ACCEPTANCE SCENARIOS (end-to-end)
+======================================================================
+
+Each is a small script using a stubbed driver. Verify console output,
+logfile content, exit code, and whether code after the `with` runs.
+
+  #  Scenario                       Tally line               Exit
+  1  All chains succeed             0 failed, N succeeded    0
+  2  One chain gets CascadeError    1 failed, N-1 succeeded: 1
+                                    reference log for details
+  3  Network error on one chain     same as 2; logfile line  1
+                                    has [NETWORK]
+  4  Pydantic parse error at an     same as 2; logfile line  1
+     operation step                 has [CASCADE-REST-CMS]
+  5  Callback raises on one chain   tally WITHOUT suffix;    1 (plain
+     (others succeed)               other chains finished;   traceback)
+                                    first callback exception
+                                    raised unwrapped
+  6  Your own code raises inside    plain traceback; cleanup 1
+     the with block                 ran
+  7  Batch failure                  clean message, no        1
+                                    traceback, chains counted
+                                    failed
+  8  exit_on_failure=False, with    tally printed; results   0
+     failures                       readable via .ok/.failed
+  9  Two submit_requests() calls,   one tally at exit,       1
+     one failure in the second      cumulative counts
+ 10  MCP tool call with a failed    ToolError; process       n/a
+     read                           survives (no SystemExit)
+
+
+======================================================================
+11. REPORT-BACK (Keith reviews before anything is accepted)
+======================================================================
+
+Return, in this order:
+  1. Output of pytest, ruff check ., mypy src/ (library), mcp/tests,
+     and validate_script.py over all templates.
+  2. Every judgment call you made, and any place this plan disagreed
+     with the source.
+  3. Each assumption A1-A8 with what you implemented.
+  4. Every grep hit from P3 and 3.4.
+  5. The list of wiki pages changed or proposed (Phase 4), including the
+     getting-started/ pages flagged in 4.4.
+  6. Confirmation that no non-goal was touched.

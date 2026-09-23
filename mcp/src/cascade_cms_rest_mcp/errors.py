@@ -1,5 +1,5 @@
-"""Translate Cascade-level failures (CascadeError values, or exceptions that
-leaked out of submit_requests) into self-correcting MCP ToolErrors. Every
+"""Translate Cascade-level failures (CascadeError values, or a
+CascadeBatchError raised by submit_requests) into self-correcting MCP ToolErrors. Every
 message here names what was tried, what's actually available, and/or which
 tool to call next - never a bare "not found" or raw traceback.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from cascade_cms.cmstypes import Asset, CascadeError, IdentifierType, Path
+from cascade_cms.failures import CascadeBatchError
 from mcp.server.mcpserver.exceptions import ToolError
 
 from . import security
@@ -18,16 +19,16 @@ from .formatting import format_names_for_message, sort_by_relevance
 def describe_identifier(identifier: IdentifierType | Path) -> str:
     if isinstance(identifier, IdentifierType):
         return f"{identifier.get_type} {identifier.get_id}"
-    site = identifier.get("siteName")
-    return f"{identifier['asset_type']} at {site}:{identifier['path']}"
+    return f"{identifier.asset_type} at {identifier.site_name}:{identifier.path}"
 
 
 def single_result(results: list[Any], *, context: str) -> Any:
     """Unwrap a one-chain `submit_requests()` result.
 
-    A top-level `submit_requests()` failure returns `[]` (see
-    `CascadeWrapperBase.submit_requests`), so this raises a ToolError instead
-    of letting `results[0]` raise a bare IndexError.
+    A batch-level failure raises CascadeBatchError (translated by
+    `unexpected_failure_error`), so an empty result is now only possible
+    for an empty queue; this still raises a ToolError rather than letting
+    `results[0]` raise a bare IndexError.
     """
     if not results:
         raise ToolError(
@@ -229,4 +230,17 @@ def list_sites_failure_error(result: CascadeError | Exception) -> ToolError:
 
 def unexpected_failure_error(tool_name: str, exc: Exception) -> ToolError:
     """Last-resort translation so no tool body can let a raw traceback leak."""
+    if isinstance(exc, CascadeBatchError):
+        return batch_failure_error(tool_name, exc)
     return ToolError(f"{tool_name} failed unexpectedly: {exc}")
+
+
+def batch_failure_error(tool_name: str, exc: CascadeBatchError) -> ToolError:
+    cause = exc.__cause__
+    detail = f"{type(cause).__name__}: {cause}" if cause else str(exc)
+    return ToolError(
+        f"{tool_name} failed: the request batch could not be completed "
+        f"({detail}). This usually indicates a connectivity/credential "
+        "problem - check CASCADE_URL and CASCADE_API_KEY, confirm the "
+        "server is reachable, and retry."
+    )

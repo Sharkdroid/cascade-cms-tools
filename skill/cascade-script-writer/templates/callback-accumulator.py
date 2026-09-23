@@ -16,13 +16,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -48,11 +50,10 @@ _lock: threading.Lock = threading.Lock()
 totals: dict[str, int] = {}
 
 
-def tally_by_type(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        key = "error"
-    else:
-        key = result.asset_type
+def tally_by_type(result: Asset) -> None:
+    # A failed read never reaches the callback; the
+    # library counts it and reports it at exit.
+    key = result.asset_type
     with _lock:
         totals[key] = totals.get(key, 0) + 1
 
@@ -63,11 +64,7 @@ def main() -> None:
     ) as cascade:
         cascade.operations.read(TARGETS).then(tally_by_type)
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        cascade.submit_requests(Asset)
 
         for key, count in sorted(totals.items()):
             print(f"{key}: {count}")

@@ -7,14 +7,16 @@ from pathlib import Path as FilePath
 from typing import Any
 
 from cascade_cms.cmstypes import (
-    CascadeError,
     IdentifierType,
     NewAsset,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -62,27 +64,23 @@ def main() -> None:
     with CascadeWrapperBase(
         environment_variables, configuration_variables
     ) as cascade:
-        cascade.operations.create(payloads)
+        # One create() per payload: each becomes its own
+        # chain, so .success / .failed are per asset. A
+        # single create(payloads) list is ONE chain whose
+        # result is a list.
+        for payload in payloads:
+            cascade.operations.create(payload)
 
-        try:
-            results = cascade.submit_requests(
-                IdentifierType
-            )
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        results = cascade.submit_requests(IdentifierType)
 
         created = 0
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-            else:
-                created += 1
-                kind, new_id = (
-                    result.get_type,
-                    result.get_id,
-                )
-                print(f"Created {kind} {new_id}")
+        for result in results.success:
+            created += 1
+            kind, new_id = (
+                result.get_type,
+                result.get_id,
+            )
+            print(f"Created {kind} {new_id}")
         print(f"{created}/{len(payloads)} created.")
 
 

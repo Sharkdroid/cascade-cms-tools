@@ -51,13 +51,10 @@ MANIFEST_PATH = SKILL_ROOT / "cascade_cms" / "_bundle_manifest.json"
 
 
 def field_reference() -> str:
-    """Name the field reference this bundle actually ships. The full skill has
-    operations_schema.json; the lite skill has the generated OPS.md and nothing
-    else. Pointing at a file that isn't there sends a model hunting through the
-    bundle, which is exactly what the lite skill exists to prevent."""
-    for candidate in ("references/OPS.md", "references/operations_schema.json"):
-        if (SKILL_ROOT / candidate).exists():
-            return candidate
+    """Name the field reference this bundle ships, so error messages never
+    point a model at a file that isn't there."""
+    if (SKILL_ROOT / "references/operations_schema.json").exists():
+        return "references/operations_schema.json"
     return "the bundled reference files"
 
 
@@ -187,6 +184,7 @@ def _load_modules():
     try:
         import cascade_cms.cmstypes as cmstypes
         import cascade_cms.driver as driver
+        import cascade_cms.failures as failures
         import cascade_cms.operations as operations
         import cascade_cms.wrapper as wrapper
     except Exception as e:
@@ -197,6 +195,7 @@ def _load_modules():
         "cascade_cms.operations": operations,
         "cascade_cms.wrapper": wrapper,
         "cascade_cms.driver": driver,
+        "cascade_cms.failures": failures,
     }
 
 
@@ -343,45 +342,58 @@ def _dict_literal_keys(node: ast.Dict) -> set[str]:
 
 
 def check_path_identifiers(tree: ast.Module):
-    """Level 6: a Path identifier is a plain dict, so nothing validates it
-    until resolve_identifier() raises at request-build time. Require the two
-    keys it actually needs."""
+    """Level 6: `Path` is a Pydantic model (3.2.2+), not a dict. A dict
+    literal passed as an identifier crashes in resolve_identifier() (it reads
+    `.site_name` by attribute), and a `Path(...)` without a site name raises
+    ValueError at request-build time. Catch both statically."""
     violations = []
 
-    def inspect(d: ast.Dict, lineno: int, where: str):
+    def inspect_dict(d: ast.Dict, lineno: int, where: str):
         keys = _dict_literal_keys(d)
-        if not keys or "path" not in keys:
-            return  # not a Path-shaped literal
-        if "siteName" not in keys:
+        if "path" in keys:
             violations.append(
-                f"line {lineno}: {where} Path dict has 'path' but no 'siteName' — "
-                f"resolve_identifier() raises ValueError('Path identifiers require siteName "
-                f"to build the request URL'). Add siteName='<site>'."
+                f"line {lineno}: {where} uses a dict literal as a Path. Path is a "
+                f"Pydantic model since cascade-cms-rest 3.2.2 — write "
+                f"Path(site_name=..., path=..., asset_type=...) instead."
             )
-        if "asset_type" not in keys:
+
+    def inspect_call(call: ast.Call):
+        names = {kw.arg for kw in call.keywords}
+        if None in names:
+            return  # **kwargs: cannot tell statically
+        if not ({"site_name", "siteName"} & names):
             violations.append(
-                f"line {lineno}: {where} Path dict is missing 'asset_type' (e.g. 'page', "
+                f"line {call.lineno}: Path(...) has no site_name — "
+                f"resolve_identifier() raises ValueError('Path identifiers require "
+                f"site_name to build the request URL'). Add site_name='<site>'."
+            )
+        if "asset_type" not in names:
+            violations.append(
+                f"line {call.lineno}: Path(...) is missing asset_type (e.g. 'page', "
                 f"'file', 'folder') — required to build the request URL."
             )
 
     for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "Path"
+        ):
+            inspect_call(node)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            inner = node.func.value
-            if isinstance(inner, ast.Attribute) and inner.attr == "operations":
-                if node.func.attr not in IDENTIFIER_OP_NAMES:
-                    continue
-                for arg in node.args[:1]:
-                    if isinstance(arg, ast.Dict):
-                        inspect(arg, node.lineno, f"cascade.operations.{node.func.attr}(...)")
-                    elif isinstance(arg, (ast.List, ast.Tuple)):
-                        for elt in arg.elts:
-                            if isinstance(elt, ast.Dict):
-                                inspect(elt, node.lineno, f"cascade.operations.{node.func.attr}(...)")
+            if node.func.attr not in IDENTIFIER_OP_NAMES:
+                continue
+            where = f"operations.{node.func.attr}(...)"
+            for arg in node.args[:1]:
+                elts = arg.elts if isinstance(arg, ast.List | ast.Tuple) else [arg]
+                for elt in elts:
+                    if isinstance(elt, ast.Dict):
+                        inspect_dict(elt, node.lineno, where)
         # standalone `ident: Path = {...}`
         if isinstance(node, ast.AnnAssign) and isinstance(node.value, ast.Dict):
             ann = node.annotation
             if isinstance(ann, ast.Name) and ann.id == "Path":
-                inspect(node.value, node.lineno, "Path annotation")
+                inspect_dict(node.value, node.lineno, "Path annotation")
 
     if violations:
         print("[PATH IDENTIFIER ERROR] Malformed Path identifier(s):")
@@ -389,6 +401,42 @@ def check_path_identifiers(tree: ast.Module):
             print(f"  - {v}")
         sys.exit(1)
     print("[OK] Path identifier check passed")
+
+
+def check_chain_results_attrs(tree: ast.Module) -> None:
+    """Level 6b: `ChainResults` exposes `.success` and `.failed`. `.ok` was
+    renamed to `.success` in cascade-cms-rest 3.2.2 with no alias, so it
+    raises AttributeError at runtime; catch it on anything bound directly
+    from submit_requests()."""
+
+    def is_submit(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "submit_requests"
+        )
+
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AnnAssign) and node.value is not None:
+            if is_submit(node.value):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                bound.update(t.id for t in targets if isinstance(t, ast.Name))
+
+    errors = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "ok":
+            value = node.value
+            if is_submit(value) or (isinstance(value, ast.Name) and value.id in bound):
+                errors.append(f"line {node.lineno}")
+    if errors:
+        print(
+            "[RESULTS ERROR] `.ok` on a submit_requests() result: "
+            + ", ".join(errors)
+        )
+        print("  Fix: ChainResults.ok was renamed to .success (no alias).")
+        sys.exit(1)
+    print("[OK] ChainResults attribute check passed")
 
 
 # What each operation actually resolves to once parsed.
@@ -421,36 +469,117 @@ OPERATION_RESULT_TYPES = {
 }
 
 
+def _callback_returns(tree: ast.Module) -> dict[str, str | None]:
+    """Map each def's name to its return annotation (None if absent)."""
+    out: dict[str, str | None] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            out[node.name] = ast.unparse(node.returns) if node.returns else None
+    return out
+
+
+def _chain_links(call: ast.Call) -> list[ast.Call] | None:
+    """Unwind `x.operations.a(...).then(...).b(...)` into its calls, in
+    order. None when the expression is not rooted at `.operations`."""
+    links: list[ast.Call] = []
+    node: ast.expr = call
+    while isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        links.append(node)
+        node = node.func.value
+    if isinstance(node, ast.Attribute) and node.attr == "operations":
+        return list(reversed(links))
+    return None
+
+
+def _chain_result_type(links: list[ast.Call], returns: dict[str, str | None]) -> str | None:
+    """The type the chain's last node yields, or None when unknown.
+
+    A callback annotated `-> None` passes the previous result through (the
+    library treats a None return as a side effect); any other annotation
+    becomes the chain's type. An unannotated or unresolvable callback makes
+    the type unknown, so no warning is raised for it.
+    """
+    current: str | None = None
+    for link in links:
+        assert isinstance(link.func, ast.Attribute)
+        name = link.func.attr
+        if name == "then":
+            fns: list[ast.expr] = []
+            for arg in link.args:
+                fns.extend(arg.elts if isinstance(arg, ast.List) else [arg])
+            for fn in fns:
+                if not isinstance(fn, ast.Name) or fn.id not in returns:
+                    return None
+                annotation = returns[fn.id]
+                if annotation is None:
+                    return None
+                if annotation != "None":
+                    current = annotation
+        elif name in OPERATION_RESULT_TYPES:
+            current = OPERATION_RESULT_TYPES[name]
+        else:
+            return None
+    return current
+
+
 def check_result_type(tree: ast.Module):
-    """Level 7: warn when submit_requests(T) disagrees with the operations
-    actually queued. This is a type-hint-only argument, so a mismatch never
-    fails at runtime — it just makes the script lie to its reader and to mypy."""
-    queued = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            inner = node.func.value
-            if isinstance(inner, ast.Attribute) and inner.attr == "operations":
-                if node.func.attr in OPERATION_RESULT_TYPES:
-                    queued.add(OPERATION_RESULT_TYPES[node.func.attr])
-
+    """Level 7: warn when submit_requests(T) disagrees with what the chains
+    queued in THAT batch actually yield — the last operation's type, or the
+    return annotation of a trailing `.then()` callback. Batches are split
+    at each submit_requests() call, in source order within a function.
+    This is a type-hint-only argument, so a mismatch never fails at
+    runtime — it just makes the script lie to its reader and to mypy."""
+    returns = _callback_returns(tree)
     warnings = []
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "submit_requests"
-            and node.args
-            and isinstance(node.args[0], ast.Name)
-        ):
-            hinted = node.args[0].id
-            if queued and hinted not in queued:
-                warnings.append(
-                    f"line {node.lineno}: submit_requests({hinted}) but the queued "
-                    f"operation(s) return {' | '.join(sorted(queued))}. "
-                    f"Use submit_requests({sorted(queued)[0]}) or drop the hint."
-                )
+    scopes = [tree] + [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    for scope in scopes:
+        events: list[tuple[int, int, str, ast.Call]] = []
+        for node in ast.walk(scope):
+            if node is not scope and isinstance(
+                node, ast.FunctionDef | ast.AsyncFunctionDef
+            ):
+                continue
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr == "submit_requests":
+                events.append((node.lineno, node.col_offset, "submit", node))
+            elif _chain_links(node) is not None:
+                events.append((node.lineno, node.col_offset, "chain", node))
+        # Keep only outermost chain calls: an inner link of a chain is
+        # itself rooted at .operations and would be counted twice.
+        inner = {
+            id(link)
+            for _, _, kind, call in events if kind == "chain"
+            for link in (_chain_links(call) or [])[:-1]
+        }
+        batch: set[str | None] = set()
+        for lineno, _, kind, call in sorted(events, key=lambda e: e[:2]):
+            if kind == "chain":
+                if id(call) in inner:
+                    continue
+                links = _chain_links(call) or []
+                batch.add(_chain_result_type(links, returns))
+                continue
+            if (
+                call.args
+                and isinstance(call.args[0], ast.Name)
+                and batch
+                and None not in batch
+            ):
+                hinted = call.args[0].id
+                known = sorted(t for t in batch if t is not None)
+                if hinted not in known:
+                    warnings.append(
+                        f"line {lineno}: submit_requests({hinted}) but this "
+                        f"batch's chains yield {' | '.join(known)}. "
+                        f"Use submit_requests({known[0]}) or drop the hint."
+                    )
+            batch = set()
 
-    for w in warnings:
+    for w in sorted(set(warnings)):
         print(f"[WARN] {w}")
     print("[OK] Result-type check passed" + (" (with warnings)" if warnings else ""))
 
@@ -460,7 +589,7 @@ CONSTRUCTIBLE_NAMES = {
     "moveParameters", "publishInformation", "Comment", "SiteCopyParameter",
     "workflowTransitionInformation", "auditParameters", "SearchInformation",
     "preference", "Message", "accessRightsInformationPayload",
-    "workflowSettingsPayload",
+    "workflowSettingsPayload", "Path", "PathBase",
 }
 
 
@@ -675,6 +804,7 @@ def main():
     check_operation_names(tree)
     check_asset_subscript_assignment(tree)
     check_path_identifiers(tree)
+    check_chain_results_attrs(tree)
     check_result_type(tree)
     check_construction(tree, source)
     check_deprecated_get(tree)

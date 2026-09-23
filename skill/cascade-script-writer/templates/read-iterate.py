@@ -8,15 +8,17 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
     ListElements,
     SearchInformation,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -36,25 +38,20 @@ def main() -> None:
     ) as cascade:
         cascade.operations.search(
             SearchInformation(
-                siteName=SITE_NAME,
-                searchTerms="annual report",
-                searchFields=["title", "keywords"],
-                searchTypes=["page"],
+                site_name=SITE_NAME,
+                search_terms="annual report",
+                search_fields=["title", "keywords"],
+                search_types=["page"],
             )
         )
 
-        try:
-            found = cascade.submit_requests(ListElements)
-        except Exception as exc:
-            print(f"Search failed: {exc}")
-            return
+        found = cascade.submit_requests(ListElements)
 
         # search returns ListElements containers, so flatten
         # to identifiers first.
         identifiers = [
             element
-            for container in found
-            if not isinstance(container, CascadeError)
+            for container in found.success
             for element in container.flat
             if isinstance(element, IdentifierType)
         ]
@@ -68,17 +65,10 @@ def main() -> None:
         )
         cascade.operations.read(identifiers)
 
-        try:
-            assets = cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Read failed: {exc}")
-            return
+        assets = cascade.submit_requests(Asset)
 
-        for asset in assets:
-            if isinstance(asset, CascadeError):
-                print(f"FAILED: {asset.message}")
-            else:
-                print(f"  {asset.get('path')}")
+        for asset in assets.success:
+            print(f"  {asset.get('path')}")
 
 
 if __name__ == "__main__":

@@ -13,7 +13,8 @@ One chain per target: `read(identifier).edit(identifier,
 apply_edits)` reads the asset, then `edit()`'s callable
 payload is invoked with that result to produce the saved
 version. A chain that fails to read never reaches edit — its
-slot in the results is the `CascadeError` instead.
+chain is recorded in `results.failed` and is left out
+of `results.success`.
 """
 
 import os
@@ -22,14 +23,16 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     CascadeSuccess,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -66,21 +69,9 @@ def main() -> None:
                 identifier, apply_edits
             )
 
-        try:
-            results = cascade.submit_requests(
-                CascadeSuccess
-            )
-        except Exception as exc:
-            print(f"Batch failed: {exc}")
-            return
+        results = cascade.submit_requests(CascadeSuccess)
 
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-            elif isinstance(result, Exception):
-                print(f"FAILED: {result}")
-            else:
-                print("Saved.")
+        print(f"Saved {len(results.success)}.")
 
 
 if __name__ == "__main__":

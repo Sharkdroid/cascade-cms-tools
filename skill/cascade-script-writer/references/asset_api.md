@@ -69,7 +69,8 @@ raises — set it via the raw dict only if you know the server accepts it.
 Mutating an `Asset` changes an in-memory object. To persist it:
 
 ```python
-cascade.operations.edit(asset)          # or a list of assets
+cascade.operations.edit(asset)          # one chain per asset
+# A list is ONE chain whose result is a list (see SKILL.md)
 results = cascade.submit_requests(CascadeSuccess)
 ```
 
@@ -96,15 +97,15 @@ if region is not None:
 
 Both return `None` when nothing matches — always guard before using the result.
 
-## Errors come back as values
+## Failed reads are reported by the wrapper
 
-`read` returns a `CascadeError` instead of an `Asset` when the operation
-fails; it does not raise. Check before touching asset fields:
+`read` yields a `CascadeError` value instead of an `Asset` when the
+operation fails; it does not raise. `submit_requests()` returns a
+`ChainResults` (a list) whose `.success` holds only successful results and
+whose `.failed` holds `ChainFailure` records. A failed read never reaches
+a `.then()` callback. No `isinstance` check is needed:
 
 ```python
-for result in cascade.submit_requests(Asset):
-    if isinstance(result, CascadeError):
-        print(f"failed: {result.message}")
-        continue
-    print(result.get("path"))
+for asset in cascade.submit_requests(Asset).success:
+    print(asset.get("path"))
 ```

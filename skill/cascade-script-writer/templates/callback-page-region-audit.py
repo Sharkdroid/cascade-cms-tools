@@ -14,13 +14,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -42,11 +44,7 @@ CONFIGURATION: str = "ASPX"
 REQUIRED_REGION: str = "FOOTER"
 
 
-def audit_regions(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        print(f"ERROR: {result.message}")
-        return
-
+def audit_regions(result: Asset) -> None:
     path = result.get("path")
     config = result.get_page_configuration(CONFIGURATION)
     if config is None:
@@ -74,10 +72,7 @@ def main() -> None:
     ) as cascade:
         cascade.operations.read(TARGETS).then(audit_regions)
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
+        cascade.submit_requests(Asset)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import uuid
 
 import pytest
-from cascade_cms.cmstypes import CascadeError, IdentifierType
+from cascade_cms.cmstypes import CascadeError, IdentifierType, Path
 from cascade_cms_rest_mcp.errors import (
     describe_identifier,
     read_asset_error,
@@ -37,7 +37,7 @@ def test_describe_identifier_for_identifier_type():
 
 
 def test_describe_identifier_for_path():
-    path = {"path": "/a/b", "siteName": "my-site", "asset_type": "page"}
+    path = Path(path="/a/b", site_name="my-site", asset_type="page")
 
     described = describe_identifier(path)
 
@@ -87,3 +87,26 @@ def test_unexpected_failure_error_includes_tool_name():
     message = str(tool_error)
     assert "cascade_read_asset" in message
     assert "boom" in message
+
+
+def test_unexpected_failure_error_maps_batch_error_with_cause():
+    from cascade_cms.failures import CascadeBatchError
+
+    try:
+        try:
+            raise ConnectionError("refused")
+        except ConnectionError as cause:
+            raise CascadeBatchError("batch broke") from cause
+    except CascadeBatchError as batch:
+        tool_error = unexpected_failure_error("cascade_search", batch)
+
+    message = str(tool_error)
+    assert "cascade_search" in message
+    assert "ConnectionError: refused" in message
+    assert "CASCADE_URL" in message
+
+
+def test_single_result_accepts_chain_results():
+    from cascade_cms.failures import ChainResults
+
+    assert single_result(ChainResults(["x"]), context="c") == "x"

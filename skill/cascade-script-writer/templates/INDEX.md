@@ -14,6 +14,9 @@ line over 60 characters.
 
 ## Core operations
 
+Scripts with writes (`create-bulk`, `edit-in-place`, the workflow and
+publish templates) are delivered in stages — see `SKILL.md` Step 6.
+
 | Task shape | Template |
 |---|---|
 | Read specific assets by UUID and/or site+path | `read-identifiers` |
@@ -36,12 +39,19 @@ line over 60 characters.
 | Call an async API per result | `callback-async-io` |
 | Combine a sync transform with an async hand-off | `callback-mixed-sync-async` |
 | CPU-heavy per-asset work (parsing, hashing, images) | `callback-cpu-bound` |
-| Write results to a CSV or other file | `callback-csv-export` |
-| Count or collect across all results | `callback-accumulator` |
+| Count or collect across all results, print a report | `callback-accumulator` |
 | Show progress while a long batch runs | `callback-progress-reporting` |
 | Keep going when one result's processing fails | `callback-error-isolation` |
 | Edit structured-data (data-definition) fields | `callback-structured-data-edit` |
 | Inspect page-configuration regions | `callback-page-region-audit` |
+
+## Failure handling
+
+No template wraps `submit_requests()` in `try/except` or checks result
+types. Read `.success` / `.failed` on the returned `ChainResults`; the
+context manager prints a tally and exits non-zero on failure (code after
+the `with` block does not run then). `callback-error-isolation` shows
+tolerant per-item processing.
 
 ## Choosing a callback style
 

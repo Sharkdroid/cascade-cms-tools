@@ -12,13 +12,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -37,16 +39,13 @@ TARGETS: list[IdentifierType] = [
 ]
 
 
-def skip_errors(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        print(f"FAILED: {result.message}")
+def log_read(result: Asset) -> None:
+    print(f"read: {result.get('path')}")
 
 
 def normalize_keywords(
-    result: Asset | CascadeError,
+    result: Asset,
 ) -> None:
-    if isinstance(result, CascadeError):
-        return
     raw = result.get("keywords") or ""
     cleaned = ", ".join(
         k.strip().lower()
@@ -57,9 +56,7 @@ def normalize_keywords(
     result.keywords = cleaned
 
 
-def report(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        return
+def report(result: Asset) -> None:
     print(f"{result.get('path')}: {result.get('keywords')}")
 
 
@@ -68,13 +65,10 @@ def main() -> None:
         environment_variables, configuration_variables
     ) as cascade:
         cascade.operations.read(TARGETS).then(
-            skip_errors
+            log_read
         ).then([normalize_keywords, report])
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
+        cascade.submit_requests(Asset)
 
 
 if __name__ == "__main__":

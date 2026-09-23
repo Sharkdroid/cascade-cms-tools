@@ -9,14 +9,16 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
     Path,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -36,13 +38,12 @@ BY_ID: IdentifierType = IdentifierType(
     id=uuid.UUID("e868f539ac1001062cfa029c4c5df4d0"),
     type="page",
 )
-BY_PATH: Path = {
-    "asset_type": "page",
+BY_PATH: Path = Path(
+    asset_type="page",
     # Required: resolve_identifier() raises without it.
-    "siteName": SITE_NAME,
-    "path": "about/index",
-    "siteId": uuid.UUID("00000000000000000000000000000000"),
-}
+    site_name=SITE_NAME,
+    path="about/index",
+)
 
 
 def main() -> None:
@@ -51,18 +52,11 @@ def main() -> None:
     ) as cascade:
         cascade.operations.read([BY_ID, BY_PATH])
 
-        try:
-            results = cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        results = cascade.submit_requests(Asset)
 
-        for result in results:
-            if isinstance(result, CascadeError):
-                print(f"FAILED: {result.message}")
-            else:
-                name = result.get("name")
-                print(f"{result.asset_type}: {name}")
+        for result in results.success:
+            name = result.get("name")
+            print(f"{result.asset_type}: {name}")
 
 
 if __name__ == "__main__":

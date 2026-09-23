@@ -52,13 +52,21 @@ def _wrapper() -> CascadeWrapperBase:
     CascadeCMSRestDriver owns a private, non-reentrant asyncio event loop per
     instance, and MCPServer can dispatch concurrent sync tool calls onto
     different worker threads - sharing one wrapper/driver across those would
-    race. This also matches every existing precedent in the repo (README,
+    race. exit_on_failure=False keeps the library from raising SystemExit
+    at `with` exit; failures surface as values or CascadeBatchError. This also matches every existing precedent in the repo (README,
     skill templates, tests/edit_test.py): a short-lived `with
     CascadeWrapperBase(...) as cascade:` block per unit of work. The
     file-backed SQLite cache still persists hits across calls even though the
     connection object doesn't.
     """
-    return CascadeWrapperBase(load_environment_variables(), cache_configuration())
+    try:
+        environment = load_environment_variables()
+    except SystemExit as exc:
+        # SystemExit is not an Exception and must never escape a tool call.
+        raise ToolError(str(exc)) from exc
+    return CascadeWrapperBase(
+        environment, cache_configuration(), exit_on_failure=False
+    )
 
 
 def _guard_asset_type(identifier: IdentifierType | CascadePath, *, context: str) -> None:
@@ -66,7 +74,7 @@ def _guard_asset_type(identifier: IdentifierType | CascadePath, *, context: str)
     out for a tool that accepts an identifier. See security.py for what's
     blocked and why."""
     asset_type = (
-        identifier.get_type if isinstance(identifier, IdentifierType) else identifier["asset_type"]
+        identifier.get_type if isinstance(identifier, IdentifierType) else identifier.asset_type
     )
     if not security.is_asset_type_allowed(asset_type):
         raise errors.blocked_asset_type_error(str(asset_type), context=context)
@@ -91,9 +99,9 @@ def cascade_search(
         # and is caught by the except Exception clause, surfacing as a
         # ToolError rather than silently doing the wrong thing.
         payload = SearchInformation(
-            siteName=site,
-            searchTerms=query,
-            searchTypes=cast(
+            site_name=site,
+            search_terms=query,
+            search_types=cast(
                 "list[AssetTypes] | list[Literal['']]", asset_types or [""]
             ),
         )
@@ -365,7 +373,7 @@ def cascade_get_page_config(
             (c for c in asset._page_configs if c.name == configuration_name), None
         )
         region_names = (
-            [r.name for r in instance_config.pageRegions] if instance_config else []
+            [r.name for r in instance_config.page_regions] if instance_config else []
         )
 
         if page_region is None:

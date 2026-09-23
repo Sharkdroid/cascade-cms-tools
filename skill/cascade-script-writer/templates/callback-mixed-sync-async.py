@@ -14,13 +14,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -39,23 +41,19 @@ TARGETS: list[IdentifierType] = [
 ]
 
 
-def stamp_summary(result: Asset | CascadeError) -> None:
+def stamp_summary(result: Asset) -> None:
     """Sync: runs in the executor."""
-    if isinstance(result, CascadeError):
-        return
     result.summary = (
         f"Reviewed: {result.get('title') or 'untitled'}"
     )
 
 
 async def ship_summary(
-    result: Asset | CascadeError,
+    result: Asset,
 ) -> None:
     """Async: awaited directly, and sees stamp_summary's
     mutation.
     """
-    if isinstance(result, CascadeError):
-        return
     await asyncio.sleep(0)
     print(
         f"{result.get('path')} -> {result.get('summary')}"
@@ -70,10 +68,7 @@ def main() -> None:
             [stamp_summary, ship_summary]
         )
 
-        try:
-            cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
+        cascade.submit_requests(Asset)
 
 
 if __name__ == "__main__":

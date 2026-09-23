@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Dispatch on result type inside a callback.
 
-One batch can mix result types, and every operation can also
-come back as a CascadeError instead of its success type —
-failures are returned as values, not raised. Results arrive
-in COMPLETION order, not submission order, so never match a
-result to its request by position.
+One batch can mix result types, so a callback can dispatch
+on what it receives. A chain that fails at an operation
+never reaches its callbacks: the wrapper records it and
+reports it at exit, so no CascadeError branch is needed.
 """
 
 import os
@@ -14,16 +13,18 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     CascadeSuccess,
     CheckedOutAsset,
     IdentifierType,
     ListElements,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -43,11 +44,7 @@ TARGETS: list[IdentifierType] = [
 
 
 def dispatch(result: object) -> None:
-    # CascadeError first: it is the one type any operation
-    # can return.
-    if isinstance(result, CascadeError):
-        print(f"ERROR: {result.message}")
-    elif isinstance(result, CascadeSuccess):
+    if isinstance(result, CascadeSuccess):
         print("WRITE OK")
     elif isinstance(result, Asset):
         path = result.get("path")
@@ -55,7 +52,7 @@ def dispatch(result: object) -> None:
     elif isinstance(result, IdentifierType):
         print(f"CREATED {result.get_type} {result.get_id}")
     elif isinstance(result, CheckedOutAsset):
-        working_copy = result.workingCopyIdentifier
+        working_copy = result.working_copy_identifier
         print(f"CHECKED OUT -> {working_copy.get_id}")
     elif isinstance(result, ListElements):
         print(f"LIST of {len(result.flat)}")
@@ -70,10 +67,7 @@ def main() -> None:
         cascade.operations.read(TARGETS).then(dispatch)
         cascade.operations.listSites()
 
-        try:
-            cascade.submit_requests()
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
+        cascade.submit_requests()
 
 
 if __name__ == "__main__":

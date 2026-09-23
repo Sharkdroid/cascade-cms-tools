@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Detect partial failure when a callback raises.
+"""Keep going when one result's processing fails.
 
-A callback that raises is logged and swallowed — the batch
-continues to the next callback and the next result, and
-submit_requests() still returns normally. That means a
-crashed callback is INVISIBLE unless the script tracks its
-own outcomes. Record successes and failures explicitly and
-reconcile the counts afterwards.
+An uncaught exception in a callback stops THAT chain only.
+The other chains finish, the wrapper prints its tally, and
+the first callback exception is raised, unwrapped, when the
+`with` block exits (exit code 1).
+
+For tolerant processing, catch errors inside the callback
+and record them, as below. The run then finishes normally
+and you decide what a partial failure means.
 """
 
 import os
@@ -15,13 +17,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -47,9 +51,7 @@ processed: list[str] = []
 failed: list[str] = []
 
 
-def risky_transform(result: Asset | CascadeError) -> None:
-    if isinstance(result, CascadeError):
-        return
+def risky_transform(result: Asset) -> None:
     path = result.get("path") or "<unknown>"
     try:
         # Anything that can throw on unexpected data — a
@@ -59,8 +61,8 @@ def risky_transform(result: Asset | CascadeError) -> None:
             raise ValueError("asset has no title")
         result.title = title.strip()
     except Exception as exc:
-        # Catch locally: the library would otherwise swallow
-        # this silently.
+        # Catch locally: uncaught, this would stop the
+        # chain and be raised at exit.
         failed.append(f"{path}: {exc}")
         return
     processed.append(path)
@@ -74,17 +76,9 @@ def main() -> None:
             risky_transform
         )
 
-        try:
-            results = cascade.submit_requests(Asset)
-        except Exception as exc:
-            print(f"Request submission failed: {exc}")
-            return
+        results = cascade.submit_requests(Asset)
 
-        readable = sum(
-            1
-            for r in results
-            if not isinstance(r, CascadeError)
-        )
+        readable = len(results.success)
         print(
             f"read ok: {readable}, "
             f"transformed: {len(processed)}, "
@@ -92,11 +86,6 @@ def main() -> None:
         )
         for line in failed:
             print(f"  FAILED {line}")
-        if len(processed) + len(failed) != readable:
-            print(
-                "WARNING: some callbacks did not "
-                "run to completion."
-            )
 
 
 if __name__ == "__main__":

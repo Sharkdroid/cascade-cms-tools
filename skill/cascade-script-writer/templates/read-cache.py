@@ -9,13 +9,15 @@ from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
-    CascadeError,
     IdentifierType,
 )
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import (
+    CascadeWrapperBase,
+    EnvironmentVars,
+)
 
 # ----- Configuration -----
-environment_variables: dict[str, str] = {
+environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
@@ -49,17 +51,9 @@ def main() -> None:
         for pass_number in (1, 2):
             cascade.operations.read(TARGETS)
 
-            try:
-                results = cascade.submit_requests(Asset)
-            except Exception as exc:
-                print(f"Pass {pass_number} failed: {exc}")
-                return
+            results = cascade.submit_requests(Asset)
 
-            hits = sum(
-                1
-                for r in results
-                if not isinstance(r, CascadeError)
-            )
+            hits = len(results.success)
             print(
                 f"Pass {pass_number}: "
                 f"{hits}/{len(TARGETS)} assets read"

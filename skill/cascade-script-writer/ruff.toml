@@ -1,0 +1,9 @@
+# Formatting config for generated/template scripts, applied explicitly by
+# scripts/validate_script.py's formatting check regardless of where a
+# generated script is validated from — see SKILL.md's "Formatting &
+# readability" section (150-char lines, parenthesized chains over backslash
+# continuation).
+line-length = 150
+
+[format]
+line-ending = "lf"

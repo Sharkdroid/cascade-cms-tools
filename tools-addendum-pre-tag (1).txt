@@ -1,0 +1,345 @@
+ADDENDUM TO error-handling-redesign-plan.txt - PRE-COMMIT / PRE-TAG
+Date: 2026-09-23
+Applies to: cascade-cms-tools (skill + MCP) unless a section says otherwise.
+Context: Keith reviewed the tools-session deviation report. This addendum
+adds work and gates. Nothing here changes the locked design decisions
+D1-D12 in the original plan.
+
+
+======================================================================
+0. GROUND RULES
+======================================================================
+
+- Do NOT commit, tag, or push a tag until you have posted the report in
+  section 8 and Keith has approved it.
+- Line numbers below come from the earlier snapshot and may have moved.
+  Use grep to locate the text.
+- The original plan's Phase 4 (wiki) is STILL OPEN and required. This
+  addendum does not close it. The no-output-files rule and the retired
+  template are skill-only; they are not wiki content.
+- Where this addendum and the source disagree, stop and report it.
+
+
+======================================================================
+1. DECISIONS MADE (Keith)
+======================================================================
+
+K1  Add the one-line SKILL.md warning about callbacks after a list
+    create/edit.
+K2  Live checks by Claude Code are READ-ONLY; Claude Code never runs a
+    write operation. Writes are verified by the USER through a staged-
+    write step in SKILL.md (2.8): the agent adds one write operation at
+    a time and the user pastes stdout for each stage before the next
+    write is added. No write-test script is built in either repo
+    (read-only security rule: no write-testing harness anywhere near the
+    MCP, templates, dist/ or the release bundle).
+K3  Drop CLAUDE.md. AGENTS.md is the canonical guidance file.
+K4  Stdout, not files. Retire callback-csv-export. Scripts must not
+    create output files by default.
+K5  Code after the `with` block is success-only. No template edits for
+    it; document the rule in SKILL.md.
+
+
+======================================================================
+2. SKILL.md AND TEMPLATE CHANGES
+======================================================================
+
+[ ] 2.1  Add to "What the library actually does" (adjust wording only to
+         fit the section's voice; keep the meaning):
+
+    "After a list create or edit, a following callback receives a list
+     that may contain CascadeError items. The chain does not stop on
+     per-item errors, so check each item before using it."
+
+[ ] 2.2  Add the success-only rule:
+
+    "Code after the `with` block runs only when the run had no
+     failures. Put success-only output there. Anything that must run
+     every time goes inside the block."
+
+[ ] 2.3  Add the no-output-files rule:
+
+    "Never write an output file (CSV, JSON, text) unless the user
+     explicitly asks for one and gives the path. Print reports to
+     stdout; the user can redirect them. The library's own ./cache/
+     and ./logs/ are the only files a script creates by default."
+
+[ ] 2.4  Retire templates/callback-csv-export.py.
+           - Delete the file.
+           - INDEX.md: repoint the row "Write results to a CSV or other
+             file" to callback-accumulator (which already prints its
+             result to stdout). Reword the row to match, e.g.
+             "Count or collect across all results, print a report".
+             Do not leave two rows pointing at the same template.
+           - The skill goes from 21 to 20 templates. grep the whole repo
+             for "csv-export", "21 templates" and "21 " in AGENTS.md,
+             README.md, SKILL.md, docs/, build_release.py, tests and the
+             bundle manifest, and fix every hit.
+           - Confirm nothing else (new_script.py --template choices,
+             tests, release.yml) hard-codes the template list or count.
+
+[ ] 2.5  Audit ALL remaining templates for default file output:
+         grep templates/ for open(, csv, .write(, json.dump, Path.write.
+         Report every hit. Do NOT change any yet unless it is clearly a
+         default output file; list them for Keith's decision.
+
+[ ] 2.6  SKILL.md example snippets were not run. For each code block in
+         SKILL.md: if it is a complete script, run it through
+         validate_script.py; if it is a fragment, diff it against the
+         matching template and note any divergence. Report the result.
+
+[ ] 2.7  Still unaccounted for from the original plan. Confirm each with
+         evidence (a grep result or a diff), or say "not done":
+           - 3.2: operations_schema.json key_behaviors rewritten
+             (completion_order, errors_are_values, callbacks), and a
+             check that scripts/ does not read the old key names
+           - 3.4: the stale-phrase grep ("COMPLETION", "completion
+             order", "dropped", "swallow", "try/except",
+             "isinstance(.*CascadeError") across skill/, README.md,
+             AGENTS.md, docs/, and references/asset_api.md
+           - 2.3: errors.single_result() works with ChainResults
+           - INDEX.md wording for success/failure handling
+           - the D10 note and the tally-line/prefix description in
+             SKILL.md (see also 2.2)
+
+
+[ ] 2.8  Add a staged-write step to SKILL.md (Keith's design).
+         New "Step 6 - Verify write operations in stages"; the current
+         Step 6 (Present) becomes Step 7. grep for every cross-
+         reference to "Step 5", "Step 6" and "Step 7" across SKILL.md,
+         INDEX.md, README.md, AGENTS.md, docs/ and references/, plus the
+         Checklist (~line 65), and update them. Add a matching Checklist
+         item. Keep the addition compact and report the resulting
+         SKILL.md line count. Suggested wording (adjust to the section's
+         voice; keep the meaning):
+
+    "Step 6 - Verify write operations in stages. Applies to any script
+     that contains a write operation: create, edit, delete, copy, move,
+     publish, checkIn, checkOut, siteCopy, editAccessRights,
+     editWorkflowSettings, performWorkflowTransition, markMessage,
+     deleteMessage, editPreference. Decide by operation, not HTTP
+     method: search is a POST but read-only. Read-only scripts skip
+     this step.
+
+     Do not hand over a finished script with writes in one piece. This
+     skill never runs writes, so the user's own output is the only
+     evidence. Build the script one write operation at a time, in the
+     order they run:
+
+     a. Tell the user the plan: the write operations in order, and that
+        you will add them one at a time.
+     b. Write the script with the FIRST write operation only,
+        including everything before it (reads, callbacks that build
+        payloads) and nothing after it. Print what the write returns
+        (for create, the new asset's identifier). Validate it (Step 5).
+     c. Tell the user exactly what to run, on a test asset or test site
+        where possible. Ask them to paste the full stdout, including
+        the tally line, and the exit code (`echo $?`). Say which assets
+        the stage creates, changes or leaves behind, so they can clean
+        up if you stop here.
+     d. Check the pasted output. Proceed only if the exit code is 0,
+        the tally shows 0 failed, and the printed result is what you
+        expected. A bare "it worked" is not enough; ask for the
+        output. If it fails, diagnose from the tally line and the log
+        prefix ([NETWORK], [CASCADE-REST-CMS], or none for an API
+        error), fix the script, validate again, and ask for the output
+        again.
+     e. Only then add the next write operation and repeat from c. Use
+        the identifiers earlier stages printed. Never look an asset up
+        by name in order to delete or overwrite it.
+     f. For destructive operations on existing assets (delete, publish,
+        overwrite), the stage before the write is a read-only preview
+        that prints exactly which assets will be affected. The user
+        confirms that list before the write is added.
+     g. When the last write has passed, deliver the full script
+        (Step 7) and say which stages the user confirmed."
+
+         Worked example to add under "## Examples" (about 10 lines,
+         prose only): read an asset, create a new asset from its data,
+         delete the new asset. Stage 1 is the read plus create, and it
+         prints the new asset's identifier; the user pastes stdout and
+         the agent checks it. Stage 2 adds the delete; the user pastes
+         stdout again. Stage 1 leaves a new asset behind, so the agent
+         tells the user its identifier and that they can remove it by
+         hand.
+
+         Planner addition, NOT yet confirmed by Keith - flag it in the
+         report-back: for scripts that write to many targets, the first
+         stage uses ONE target and the script is widened to the full
+         list only after that stage passes.
+
+         No template changes are needed for this step. Add one line to
+         INDEX.md, above the write templates, saying scripts with
+         writes are delivered in stages (Step 6). This step is
+         instructions only: do NOT add a write-detection check to
+         validate_script.py (non-goal).
+
+
+======================================================================
+3. REPO HYGIENE
+======================================================================
+
+[ ] 3.1  Remove CLAUDE.md from the working tree and from any staged
+         changes. If /init modified any other file, revert that change.
+[ ] 3.2  Keep the AGENTS.md note documenting .venv as an alternative
+         (Keith asked for it); AGENTS.md keeps .conda as the primary.
+[ ] 3.3  test_server.py acceptance #10 test: the report says "two
+         stubs" in one place and "three private wrapper attributes" in
+         another. State which is correct, list the attribute names, and
+         add a comment naming the library test they were copied from so
+         a future rename is easy to trace.
+
+
+======================================================================
+4. LIVE CHECKS - READ-ONLY, AGAINST APPTEST
+======================================================================
+
+Claude Code performs ONLY these live checks. Before running any template
+live, grep it for write operations (edit, create, delete, copy, move,
+publish, checkIn, checkOut, and similar). A template that performs any
+write is NOT run live; it is validated and stub-tested only.
+
+[ ] 4.1  Clean run. One read-only template, default wrapper
+         (exit_on_failure True). Expect exit code 0 and a tally of
+         "0 failed, N succeeded" with no suffix. Show `echo $?`.
+[ ] 4.2  Bad identifier. Same template with one deliberately invalid
+         identifier. Expect exit code 1, tally
+         "1 failed, N succeeded: reference log for details", a
+         "!ERROR:" line in the logfile, and no traceback. Show
+         `echo $?`. Confirm code after the `with` block did not run.
+[ ] 4.3  Network error, read-only. In a LOCAL shell only, point the URL
+         at an unreachable host and run one read-only template. Expect
+         "[NETWORK]" on the logfile "!ERROR:" line, the suffixed tally,
+         exit code 1. Do not commit anything that references the bogus
+         host.
+[ ] 4.4  Asset access. Confirm a known APPTEST asset reads successfully
+         end to end (the existing smoke test already covers this; note
+         which script and whether it used the default wrapper).
+[ ] 4.5  MCP read-only confirmation.
+           - List every tool registered in server.py and the library
+             operations each one calls. None may queue a write.
+           - Confirm _wrapper() still passes exit_on_failure=False.
+           - If it is trivial, add a test that fails when a registered
+             tool references a write operation. If it is not trivial,
+             skip and say so.
+[ ] 4.6  Write templates (edit-in-place, create-bulk, and any other
+         template that writes) are NOT run live by Claude Code. They
+         are covered by the validator and stub-driver tests. Users
+         verify writes through the staged-write step (2.8).
+[ ] 4.7  Read-only templates whose logic changed most
+         (callback-error-isolation, and any other that only reads): run
+         live and confirm the output reads correctly. If a template
+         turns out to write, apply 4.6 instead.
+
+
+======================================================================
+5. STAGED-WRITE STEP - ACCEPTANCE (replaces the manual write script)
+======================================================================
+
+The earlier plan for a manual write-test script is CANCELLED. Do not
+create it in either repo: no file under tests/ in the library, nothing
+to exclude from pytest or ruff, nothing in cascade-cms-tools.
+
+Claude Code cannot run writes, so check the new step (2.8) without
+touching the network:
+
+[ ] 5.1  Numbering and cross-references are coherent after the
+         renumbering (show the grep results before and after).
+[ ] 5.2  The Checklist has the new item.
+[ ] 5.3  The write-operation list in the step matches
+         references/operations_schema.json. Derive the write and
+         read-only operation lists from the schema and report both.
+         Every write operation must be listed, no read operation may
+         be, and search must be classified read-only.
+[ ] 5.4  Table-top walkthrough. Using the read -> create -> delete
+         example, write out in the report the two-stage conversation an
+         agent would have under the new wording: what it tells the
+         user, what it asks them to paste, what it checks, and what it
+         does on a failure. Point out any place where the wording is
+         ambiguous. Then create the stage-1 and stage-2 scripts in a
+         scratch location (NOT committed, NOT run against Cascade) and
+         confirm each passes validate_script.py.
+[ ] 5.5  Confirm from the schema and library source that stage 1 can
+         print the created asset's identifier (create returns an
+         IdentifierType built from createdAssetId) and show how a
+         callback after create receives it.
+[ ] 5.6  State in the report that two claims previously meant to be
+         confirmed against the live API are now verified on the stub
+         driver only: the "list create counts as ONE failed chain"
+         rule (A4) and the 2.1 line about callbacks after a list
+         create/edit. Keith can confirm them by hand later.
+
+
+======================================================================
+6. BUNDLE AND RELEASE GATES
+======================================================================
+
+[ ] 6.1  After the template retirement, upgrade the installed library
+         with --no-cache-dir (the first build bundled 3.2.0 from a
+         stale pip cache), then rebuild with build_release.py. Do not
+         copy the skill snapshot by hand.
+[ ] 6.2  Inspect the built zip, not just the manifest:
+           - _bundle_manifest.json records 3.2.1
+           - the bundled wrapper.py contains exit_on_failure
+           - the zip contains 20 templates and NOT callback-csv-export
+           - no leftover artifact built from 3.2.0
+[ ] 6.3  validate_script.py passes for every remaining template;
+         scripts/ has zero diff (non-goal: no error-handling check).
+[ ] 6.4  pytest, ruff check ., mypy all green. Show the output.
+[ ] 6.5  Confirm mcp/pyproject.toml version is 0.3.0 and equals the tag
+         to be created (v0.3.0), per AGENTS.md.
+[ ] 6.6  Propose commit splits for Keith's approval, for example:
+           (a) skill and template changes (incl. SKILL.md rules and
+               the staged-write step, schema, INDEX.md)
+           (b) retirement of callback-csv-export and count updates
+           (c) MCP changes and pin bump
+           (d) AGENTS.md env note
+           (e) rebuilt dist/ zip
+         CLAUDE.md is in none of them.
+
+
+======================================================================
+7. KEITH'S MANUAL CHECKLIST (not for Claude Code)
+======================================================================
+
+[ ] 7.1  Try the staged-write flow yourself once on APPTEST with the
+         read -> create -> delete example. Confirm the agent asks for
+         stdout at each stage, refuses to add delete before create
+         passes, and tells you which asset stage 1 leaves behind.
+[ ] 7.2  Test the write templates (edit-in-place, create-bulk, etc.)
+         by hand on APPTEST.
+[ ] 7.3  Before upgrading other library consumers - sync_cascade.py
+         (icw) and the image-optimization script - check whether they
+         run code after the `with` block or depend on submit_requests()
+         returning normally. A minor bump plus exit_on_failure=True as
+         the default will change their exit behavior. They can pass
+         exit_on_failure=False to keep the old behavior.
+[ ] 7.4  Wiki (original plan Phase 4): new error-handling page and
+         updates. The library is already published, so the docs lag
+         until that PR merges. Review the docs-drift PR that the
+         wrapper.py change should have triggered.
+[ ] 7.5  Approve the report in section 8, then approve commits and the
+         v0.3.0 tag.
+
+
+======================================================================
+8. REPORT-BACK (post this BEFORE committing or tagging)
+======================================================================
+
+  1. Evidence for every item in section 2.7 (grep output or diff), or
+     "not done".
+  2. Results of 2.5 (default file-output audit) and 2.6 (SKILL.md
+     snippets).
+  3. Exit codes and output for 4.1-4.3, shown with `echo $?`.
+  4. The MCP tool list and write-operation check from 4.5.
+  5. Which templates were run live and which were excluded as writers.
+  6. Zip inspection results from 6.2, and the test/lint/type output
+     from 6.4.
+  7. The answer to 3.3 (stub/attribute count and names).
+  8. Every place this addendum disagreed with the source, and every
+     judgment call you made.
+  9. Confirmation that CLAUDE.md is excluded and that no write
+     operation was run live from the tools session.
+ 10. Results of section 5 (numbering greps, operation lists, table-top
+     walkthrough, scratch-script validation) and whether you included
+     the planner addition in 2.8.
