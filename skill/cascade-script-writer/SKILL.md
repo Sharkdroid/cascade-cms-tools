@@ -1,6 +1,6 @@
 ---
 name: cascade-script-writer
-description: Generate standalone Python scripts that use the cascade_cms library (a custom REST client for Hannon Hill Cascade CMS) to accomplish a specific asset-management task the user describes — e.g. "create assets from a CSV", "publish all pages under a folder", "read a page and update its content", "advance assets through a workflow". Use this whenever the user asks for a script, automation, or one-off tool that reads, creates, edits, deletes, copies, moves, publishes, or otherwise manipulates Cascade CMS assets via this library. Always validate generated scripts with scripts/validate_script.py before presenting them — never hand over an unvalidated script.
+description: Generate standalone Python scripts that use the cascade_cms library (a custom REST client for Hannon Hill Cascade CMS) to accomplish a specific asset-management task the user describes — e.g. "create assets from a CSV", "publish all pages under a folder", "read a page and update its content", "advance assets through a workflow". Use this only in a coding agent that can read and write the user's local project directory (for example Claude Code), not in a chat app. Use this whenever the user asks for a script, automation, or one-off tool that reads, creates, edits, deletes, copies, moves, publishes, or otherwise manipulates Cascade CMS assets via this library. Always validate generated scripts with scripts/validate_script.py before presenting them — never hand over an unvalidated script.
 ---
 
 # Cascade CMS Script Writer
@@ -8,6 +8,18 @@ description: Generate standalone Python scripts that use the cascade_cms library
 Writes standalone Python scripts against the `cascade_cms` library. Every
 script is checked against the **real bundled library source**, not against
 notes in this file, before it reaches the user.
+
+## Before you start: coding agents only
+
+This skill is used only by coding agents that can read and write the
+user's local project directory, where scripts run and their log files
+are written. If you cannot read that directory (for example in a chat
+app, including one with its own sandbox), stop and tell the user this
+skill needs Claude Code or an equivalent coding agent. For read-only
+inspection from a chat app, use the Cascade MCP server instead.
+
+Having a shell or sandbox is not enough; the test is access to the
+directory where the user's script runs.
 
 ## Workflow
 
@@ -26,7 +38,7 @@ file they load themselves, or values typed into the config block. Do
 not pick one silently, and never write a real API key into the script.
 
 **Step 2 — Pick a template.** Read `templates/INDEX.md` and choose the row
-matching the task shape. Do not write a script from scratch — the 20 templates
+matching the task shape. Do not write a script from scratch — the 19 templates
 all pass the validator as written, so starting from one means only your
 task-specific edits can break it.
 
@@ -72,35 +84,48 @@ containing a write operation: `create`, `edit`, `delete`, `copy`, `move`,
 `search` is a POST but read-only. Read-only scripts skip this step.
 
 Do not hand over a finished script with writes in one piece. This skill
-never runs writes, so the user's own output is the only evidence. Build
-the script one write operation at a time, in the order they run:
+never runs writes; the user runs each stage and the script's log file is
+the evidence, which you read yourself. Build the script one write
+operation at a time, in the order they run:
 
 a. Tell the user the plan: the write operations in order, and that you
    will add them one at a time.
-b. Write the script with the FIRST write only, plus everything before it
-   (reads, callbacks that build payloads) and nothing after it. Print
-   what the write returns (for `create`, the new asset's identifier).
-   Validate it (Step 5). If it writes to many targets, use ONE target in
-   this stage and widen to the full list only after the stage passes.
-c. Tell the user exactly what to run, on a test asset or site where
-   possible. Ask for the full stdout, including the tally line, and the
-   exit code (`echo $?`). Say which assets the stage creates, changes or
-   leaves behind, so they can clean up if you stop here.
-d. Proceed only if the exit code is 0, the tally shows 0 failed, and the
-   printed result is what you expected. "It worked" is not enough; ask
-   for the output. On failure, diagnose from the tally line and the log
-   prefix (`[NETWORK]`, `[CASCADE-REST-CMS]`, or none for an API error),
-   fix the script, validate again, and ask for the output again.
-e. Only then add the next write and repeat from c. Use the identifiers
-   earlier stages printed, or pass them along the chain (a chained
-   `delete(fn)` gets `create`'s result). Never look an asset up by
-   name to delete or overwrite it.
-f. For destructive operations on existing assets (`delete`, `publish`,
+b. A stage contains ONLY its own write, plus the reads and
+   payload-building callbacks that feed it. Earlier writes are not
+   repeated; each is replaced by the identifier that stage's
+   `[RESULT]` line logged. The library writes `[RESULT]` itself; the
+   script does not need to log created identifiers. Validate it
+   (Step 5).
+c. The first run of any write uses ONE ITEM: one identifier, or one
+   payload in a list `create` / `edit`. A folder or site counts as
+   many; pick a leaf. Widen to the full list only after the stage
+   passes.
+d. Tell the user the exact command to run the paused stage, on a test
+   asset or site where possible, and which assets the stage creates,
+   changes or leaves behind, so they can clean up if you stop here.
+e. After the user says it ran, read the log file yourself: the path is
+   on the script's `[LOG]:` line, under the log directory. Proceed only
+   if the log shows 0 failed and `[EXIT-CODE]: 0`, and the
+   `[RESULT]` line is what you expected. Take the asset type and id
+   from it; use the path only as a last resort. The user does not copy or paste
+   output. On failure, diagnose from the log's `!ERROR:` lines and
+   prefix (`[NETWORK]`, `[CASCADE-REST-CMS]`, or none for a Cascade
+   error, including a non-200 status such as `501 Not Implemented`),
+   fix the script, validate again, and ask the user to run it again.
+f. For destructive operations on EXISTING assets (`delete`, `publish`,
    overwrite), the stage before the write is a read-only preview that
-   prints exactly which assets will be affected. The user confirms that
-   list before the write is added.
-g. When the last write has passed, deliver the full script (Step 7) and
-   say which stages the user confirmed.
+   calls `script_log.note()` once per affected asset (type and id
+   first, path only if needed). You read the `[NOTE]` lines from the
+   log and the user confirms that list. No preview is needed for an
+   asset an earlier stage created, but its identifier must come from
+   that stage's `[RESULT]` line, verbatim. Write notes inside the
+   `with` block. Callbacks in a process pool cannot call `note()`:
+   they return values and the main script notes them. Never
+   look an asset up by name to delete or overwrite it.
+g. Assembly stage: when every write has passed on its own, run the
+   complete script once on one item, and read its log.
+h. Only then deliver the full script (Step 7) and say which stages
+   passed.
 
 **Step 7 — Present** the script with a one-line note on what it does and which
 environment variables it needs. If the script has runtime-dynamic values the
@@ -122,7 +147,7 @@ than implying full coverage.
 [ ] ruff format --line-length 60 --isolated run on the file
 [ ] No line longer than 60 characters (code, comments, docstrings)
 [ ] validate_script.py exits 0
-[ ] Scripts with writes: delivered one write at a time (Step 6)
+[ ] Scripts with writes: delivered one write at a time, each stage's log read by you (Step 6)
 ```
 
 ## What the library actually does
@@ -169,6 +194,34 @@ logfile: `[NETWORK]` (connection/timeout), `[CASCADE-REST-CMS]` (library
 or parse error at an operation step), no prefix for API rejections and
 for exceptions raised in your callbacks.
 
+**Console output and logs.** Status lines (`[INIT]`, `[LOG]`, `[DONE]`,
+the tally, `[EXIT]`) go to **stderr**, not stdout. At startup the
+script prints `[LOG]: <path>` to stderr, the path of this run's log
+file (default directory `./logs/`; `log_dir=` changes it). The log
+file records the tally and a final `[EXIT-CODE]: <outcome>` line, so an
+agent can judge a run from the log alone.
+
+**`[RESULT]` and `[NOTE]` lines.** After a chain's pipeline line the
+library writes one `[RESULT]` line per successful write (never for
+reads or failures): `[RESULT]: create <type> <id> [<path>]`, or
+`[RESULT]: <operation> [<type> <id> <path>] succeeded`. `<id>` is
+32 hex characters and `<path>` starts with `/`. A script adds its
+own `[NOTE]: <text>` lines, inside the `with` block:
+
+```python
+from cascade_cms.utils import script_log
+
+script_log.note("will delete page <id>")
+```
+
+Outside a run a note is dropped with a `RuntimeWarning`.
+
+**Non-200 responses are Cascade failures.** Cascade answers HTTP 200
+with a JSON body, so any other status came from the web server layer.
+It becomes a failure with no prefix whose message is the status and
+reason (for example `501 Not Implemented`); the HTML body is never
+logged. There is no response cache.
+
 **Code after the `with` block is success-only.** It runs only when the
 run had no failures, so put success-only output there. Anything that
 must run every time goes inside the block.
@@ -193,8 +246,8 @@ they are not exported from `cascade_cms`.
 **No output files by default.** Never write an output file (CSV,
 JSON, text) unless the user explicitly asks for one and gives the
 path. Print reports to stdout; the user can redirect them. The
-library's own `./cache/` and `./logs/` are the only files a script
-creates by default.
+library's own `./logs/` is the only file a script creates by
+default.
 
 **Write operations return `CascadeSuccess`.** `edit`, `delete`, `copy`, `move`,
 `publish`, `checkIn`, `siteCopy`, `performWorkflowTransition`,
@@ -300,7 +353,6 @@ Shared state touched from a sync callback needs a
 """One-line description."""
 
 import os
-from typing import Any
 
 from cascade_cms.cmstypes import Asset
 from cascade_cms.wrapper import (
@@ -314,11 +366,6 @@ environment_variables: EnvironmentVars = {
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
 }
-configuration_variables: dict[str, Any] = {
-    "cache_name": "./cache/cache.sqlite",
-    "allowed_codes": (200,),
-    "allowed_methods": ("GET",),
-}
 
 
 def report(result: Asset) -> None:
@@ -327,7 +374,7 @@ def report(result: Asset) -> None:
 
 def main() -> None:
     with CascadeWrapperBase(
-        environment_variables, configuration_variables
+        environment_variables
     ) as cascade:
         cascade.operations.read(...).then(report)
         cascade.submit_requests(Asset)
@@ -339,8 +386,8 @@ if __name__ == "__main__":
 
 **Type hints are mandatory.** Every function and method parameter, every
 return type (`-> None` when nothing is returned), every callback, nested
-function and module-level variable carries an annotation. The config dicts
-are `EnvironmentVars` (from `cascade_cms.wrapper`) / `dict[str, Any]`, targets are
+function and module-level variable carries an annotation. The config block
+is `EnvironmentVars` (from `cascade_cms.wrapper`), targets are
 `list[IdentifierType]`, and a `.then()` callback taking a read result is
 `Asset` (a read result is never a `CascadeError` inside a callback).
 Only `self`/`cls` and lambdas are exempt.
@@ -362,7 +409,7 @@ flags when `ruff` is installed. (The old 150-character limit is retired.)
 
 **`CascadeWrapperBase` is the only entry point.** Never import
 `cascade_cms.driver` or anything from it (`CascadeCMSRestDriver`,
-`RequestExecutor`, `CacheHandler`), never touch the event loop
+`RequestExecutor`), never touch the event loop
 (`new_event_loop`, `set_event_loop`, `run_until_complete`, `get_event_loop`),
 never construct an `aiohttp.ClientSession`. The wrapper owns the loop and
 session for the life of the `with` block and wires them into logging and
@@ -384,7 +431,7 @@ Other conventions:
   callback runs in a process pool.
 - **One `main()`**, guarded by `if __name__ == "__main__":`.
 - **Nothing platform-specific.** The script must run in a bare `python3`
-  interpreter (3.13+, matching the bundled library). Dependencies are
+  interpreter (3.12+). Dependencies are
   `cascade_cms` plus stdlib.
 
 ## Examples
@@ -392,15 +439,21 @@ Other conventions:
 ### Staged writes: read, create, delete
 
 The user asks for a script that reads an asset, creates a copy from its
-data, then deletes the copy. Stage 1 is the read plus the create; it
-prints the new asset's identifier. The agent says what to run, asks for
-the full stdout and `echo $?`, and checks the exit code, the tally and
-the printed identifier. Stage 1 leaves a new asset behind, so the agent
-gives its identifier and says it can be removed by hand if the work
-stops here. Stage 2 appends `.delete(fn)` to the same chain, so it
-deletes the identifier that chain's `create` returned, never a name
-lookup; the user pastes stdout again before the full script is
-delivered.
+data, then deletes the copy.
+
+- **Stage 1: read + create**, on one item. The library logs
+  `[RESULT]: create page <id> <path>` by itself. The agent gives the
+  run command and says stage 1 leaves a copy behind. After the user
+  says it ran, the agent reads the log file named on the `[LOG]:`
+  line and checks 0 failed, `[EXIT-CODE]: 0` and the `[RESULT]` id.
+- **Stage 2: delete only.** The script calls
+  `script_log.note(f"will delete page {new_id}")`, then deletes the
+  id from stage 1's `[RESULT]` line, copied verbatim. It does NOT
+  re-run the create. The agent reads the log again: a
+  `[RESULT]: delete page <id> succeeded` line, 0 failed.
+- **Stage 3: assembly.** The full read → create → delete chain runs
+  once on one item, and the agent reads its log. Only then is the full
+  script delivered, with the stages that passed.
 
 ### Bulk create
 
@@ -419,7 +472,7 @@ payloads: list[NewAsset] = [
 ]
 
 with CascadeWrapperBase(
-    environment_variables, configuration_variables
+    environment_variables
 ) as cascade:
     # One create() per payload gives one chain per asset.
     for payload in payloads:
@@ -435,7 +488,7 @@ with CascadeWrapperBase(
 
 ```python
 with CascadeWrapperBase(
-    environment_variables, configuration_variables
+    environment_variables
 ) as cascade:
     cascade.operations.read(targets)
     editable: list[Asset] = cascade.submit_requests(
@@ -457,7 +510,7 @@ with CascadeWrapperBase(
 
 ```python
 with CascadeWrapperBase(
-    environment_variables, configuration_variables
+    environment_variables
 ) as cascade:
     cascade.operations.readWorkflowInformation(target)
     infos = cascade.submit_requests(workflowInformation)
@@ -489,7 +542,7 @@ Read these on demand — don't load them all up front.
 | File | Read it when |
 |---|---|
 | `templates/INDEX.md` | Always, at Step 2 — pick a starting template |
-| `templates/*.py` | 20 runnable, validator-passing scripts |
+| `templates/*.py` | 19 runnable, validator-passing scripts |
 | `references/operations_schema.json` | You need a signature, field name, or alias |
 | `references/asset_api.md` | The script reads or writes `Asset` fields |
 | `cascade_cms/*.py` | The schema isn't specific enough — ground truth |
@@ -506,7 +559,7 @@ cannot catch a script that is valid and solves the wrong problem.
 ## Keeping this skill in sync
 
 The bundled `cascade_cms/` is a **snapshot** of the *installed*
-`cascade-cms-rest` package (currently 3.2.2), so the validator can do real
+`cascade-cms-rest` package (currently 3.3.0), so the validator can do real
 Pydantic instantiation instead of schema lookups. A stale snapshot silently
 rejects correct scripts, so never copy files by hand. From the repo root, in
 the `.conda` environment:
@@ -518,14 +571,14 @@ the `.conda` environment:
 ```
 
 The build re-syncs the snapshot, rewrites `cascade_cms/_bundle_manifest.json`
-(version + per-file sha256), validates all 20 templates, and **aborts if any
+(version + per-file sha256), validates all 19 templates, and **aborts if any
 fails**. `validate_script.py` prints the bundled version on every run and warns
 when the snapshot no longer matches its manifest.
 
 If validation fails with `ModuleNotFoundError` for a library dependency:
 
 ```bash
-pip install pydantic aiohttp aiohttp_client_cache aiosqlite typing_extensions
+pip install pydantic aiohttp typing_extensions
 ```
 
 Install `ruff` (`pip install ruff`) and run `ruff format --line-length 60

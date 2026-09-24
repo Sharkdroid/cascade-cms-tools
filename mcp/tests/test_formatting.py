@@ -234,3 +234,40 @@ def test_format_names_for_message_over_limit_appends_count():
 
 def test_format_names_for_message_empty_list():
     assert format_names_for_message([]) == ""
+
+
+def test_clamp_limit():
+    from cascade_cms_rest_mcp.formatting import clamp_limit
+
+    assert clamp_limit(None) == 50
+    assert clamp_limit(50) == 50
+    assert clamp_limit(0) == 1
+    assert clamp_limit(-1) == 1
+    assert clamp_limit(500) == 200
+
+
+def test_search_results_drop_blocked_types_and_report_count():
+    def raw(asset_type):
+        return {
+            "id": str(uuid.uuid4()),
+            "type": asset_type,
+            "path": {"path": "/a", "siteName": "s"},
+        }
+
+    elements = ListElements.model_validate(
+        {"matches": [raw("page"), raw("user"), raw("group")]}
+    )
+
+    result = format_search_results(elements)
+
+    assert result["total_count"] == 1
+    assert result["filtered_count"] == 2
+    assert result["has_more"] is False
+
+
+def test_search_results_omit_filtered_count_when_nothing_dropped():
+    elements = ListElements.model_validate(
+        {"matches": [_identifier("/a/b").model_dump(by_alias=True)]}
+    )
+
+    assert "filtered_count" not in format_search_results(elements)

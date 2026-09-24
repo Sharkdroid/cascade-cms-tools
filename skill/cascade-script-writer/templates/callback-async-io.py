@@ -12,7 +12,6 @@ blocking work.
 import asyncio
 import os
 import uuid
-from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
@@ -28,11 +27,6 @@ environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
-}
-configuration_variables: dict[str, Any] = {
-    "cache_name": "./cache/cache.sqlite",
-    "allowed_codes": (200,),
-    "allowed_methods": ("GET",),
 }
 
 TARGETS: list[IdentifierType] = [
@@ -58,7 +52,7 @@ async def notify_downstream(
 
 def main() -> None:
     with CascadeWrapperBase(
-        environment_variables, configuration_variables
+        environment_variables
     ) as cascade:
         cascade.operations.read(TARGETS).then(
             notify_downstream

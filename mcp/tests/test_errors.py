@@ -110,3 +110,32 @@ def test_single_result_accepts_chain_results():
     from cascade_cms.failures import ChainResults
 
     assert single_result(ChainResults(["x"]), context="c") == "x"
+
+
+def test_tool_errors_mask_the_api_token(monkeypatch):
+    token = "sekrit-token-abcd"
+    monkeypatch.setenv("CASCADE_API_KEY", token)
+
+    error = unexpected_failure_error(
+        "cascade_search", RuntimeError(f"bad Bearer {token}")
+    )
+
+    assert token not in str(error)
+    assert "****abcd" in str(error)
+
+
+def test_batch_failure_masks_the_api_token(monkeypatch):
+    from cascade_cms.failures import CascadeBatchError
+
+    token = "sekrit-token-wxyz"
+    monkeypatch.setenv("CASCADE_API_KEY", token)
+    try:
+        try:
+            raise ConnectionError(f"with {token}")
+        except ConnectionError as cause:
+            raise CascadeBatchError("x") from cause
+    except CascadeBatchError as batch:
+        error = unexpected_failure_error("t", batch)
+
+    assert token not in str(error)
+    assert "****wxyz" in str(error)

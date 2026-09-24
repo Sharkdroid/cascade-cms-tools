@@ -1,3 +1,4 @@
+import pytest
 from cascade_cms_rest_mcp import security
 
 
@@ -26,3 +27,16 @@ def test_unknown_asset_type_is_neither_allowed_nor_blocked():
     library release adding a genuinely new asset type)."""
     assert not security.is_asset_type_allowed("not-a-real-type")
     assert not security.is_asset_type_blocked("not-a-real-type")
+
+
+@pytest.mark.parametrize("asset_type", security.ALLOWED_ASSET_TYPES)
+def test_every_allowed_type_passes_in_listed_and_lower_case(asset_type):
+    assert security.is_asset_type_allowed(asset_type)
+    assert security.is_asset_type_allowed(asset_type.lower())
+
+
+@pytest.mark.parametrize("asset_type", security.BLOCKED_ASSET_TYPES)
+def test_every_blocked_type_is_blocked_in_any_case(asset_type):
+    for variant in (asset_type, asset_type.upper(), asset_type.title()):
+        assert security.is_asset_type_blocked(variant)
+        assert not security.is_asset_type_allowed(variant)

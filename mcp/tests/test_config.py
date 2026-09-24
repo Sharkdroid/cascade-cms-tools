@@ -1,5 +1,5 @@
 import pytest
-from cascade_cms_rest_mcp.config import cache_configuration, load_environment_variables
+from cascade_cms_rest_mcp.config import load_environment_variables, log_directory
 
 
 def test_load_environment_variables_defaults_server(monkeypatch):
@@ -55,13 +55,15 @@ def test_load_environment_variables_missing_both_names_both(monkeypatch):
     assert "CASCADE_URL" in message
 
 
-def test_cache_configuration_respects_override_dir(monkeypatch, tmp_path):
-    override_dir = tmp_path / "cascade-mcp-cache"
-    monkeypatch.setenv("CASCADE_MCP_CACHE_DIR", str(override_dir))
+def test_log_directory_default(monkeypatch):
+    monkeypatch.delenv("CASCADE_MCP_LOG_DIR", raising=False)
 
-    config = cache_configuration()
+    assert log_directory().parts[-4:] == (
+        ".local", "state", "cascade-cms-mcp", "logs",
+    )
 
-    assert config["cache_name"] == str(override_dir / "cache.sqlite")
-    assert override_dir.is_dir()
-    assert config["allowed_codes"] == (200,)
-    assert config["allowed_methods"] == ("GET",)
+
+def test_log_directory_respects_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CASCADE_MCP_LOG_DIR", str(tmp_path / "x"))
+
+    assert log_directory() == tmp_path / "x"

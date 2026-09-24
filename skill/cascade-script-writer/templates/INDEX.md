@@ -20,7 +20,6 @@ publish templates) are delivered in stages — see `SKILL.md` Step 6.
 | Task shape | Template |
 |---|---|
 | Read specific assets by UUID and/or site+path | `read-identifiers` |
-| Read the same assets repeatedly, cheaply | `read-cache` |
 | Find assets by search, then read each one | `read-iterate` |
 | Create many assets from a CSV or list | `create-bulk` |
 | Read assets, change fields, save them back | `edit-in-place` |

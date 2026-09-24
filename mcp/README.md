@@ -65,7 +65,7 @@ expects — no new credential-naming surface):
 | `CASCADE_API_KEY` | Yes | Cascade API key |
 | `CASCADE_URL` | Yes | e.g. `https://your-cascade-host:8443` |
 | `SERVER` | No | Cosmetic — log-file naming, defaults to `default` |
-| `CASCADE_MCP_CACHE_DIR` | No | Overrides the default `~/.cache/cascade-cms-mcp` response-cache location |
+| `CASCADE_MCP_LOG_DIR` | No | Overrides the default `~/.local/state/cascade-cms-mcp/logs` log directory |
 
 The server fails fast at startup (not on first tool call) if `CASCADE_API_KEY`
 or `CASCADE_URL` is missing.

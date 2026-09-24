@@ -90,12 +90,17 @@ def sync_skill_snapshot() -> list[Path]:
     src_pkg = Path(cascade_cms.__file__).resolve().parent
     bundle_pkg = SKILL_SRC / "cascade_cms"
     bundle_pkg.mkdir(parents=True, exist_ok=True)
-    for stale in bundle_pkg.glob("*.py"):
+    for stale in bundle_pkg.rglob("*.py"):
         stale.unlink()
     copied = []
-    for source in sorted(src_pkg.glob("*.py")):
-        shutil.copy2(source, bundle_pkg / source.name)
-        copied.append(bundle_pkg / source.name)
+    # rglob: the library has subpackages (cascade_cms/utils/).
+    for source in sorted(src_pkg.rglob("*.py")):
+        if "__pycache__" in source.parts:
+            continue
+        target = bundle_pkg / source.relative_to(src_pkg)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(target)
     print(f"[OK] Synced {len(copied)} file(s) from installed cascade_cms ({src_pkg})")
     return copied
 
@@ -108,7 +113,10 @@ def write_skill_manifest(library_version: str, files: list[Path]) -> None:
                 "library_version": library_version,
                 "source": "src/cascade_cms",
                 "files": {
-                    f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files
+                    f.relative_to(manifest.parent).as_posix(): hashlib.sha256(
+                        f.read_bytes()
+                    ).hexdigest()
+                    for f in files
                 },
             },
             indent=2,

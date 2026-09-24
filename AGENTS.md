@@ -34,7 +34,7 @@ CI runs all three. Run them before considering a change done.
 
 ## Writing scripts that use cascade-cms-rest
 
-One skill, `skill/cascade-script-writer/` — 20 templates, full JSON schema.
+One skill, `skill/cascade-script-writer/` — 19 templates, full JSON schema.
 There is no smaller "lite" variant; see `docs/why-no-lite-skill.md` for why,
 and `docs/model-requirements.md` for the model-capability floor this skill
 assumes. A companion read-only MCP server (`mcp/`) is also available for

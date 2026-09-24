@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cascade-cms-rest-mcp"
-version = "0.2.5"
+version = "0.2.6"
 description = "Read-only MCP server exposing a Hannon Hill Cascade CMS server to MCP clients"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 authors = [{ name = "Keith Shark" }]
 dependencies = [
-    "cascade-cms-rest>=3.2.2",
+    "cascade-cms-rest>=3.4.0",
     "mcp>=2.1.0,<3",
 ]
 

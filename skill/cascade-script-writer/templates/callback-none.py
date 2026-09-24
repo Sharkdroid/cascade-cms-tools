@@ -8,7 +8,6 @@ directly is clearer than a .then() chain.
 
 import os
 import uuid
-from typing import Any
 
 from cascade_cms.cmstypes import (
     Asset,
@@ -25,11 +24,6 @@ environment_variables: EnvironmentVars = {
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
 }
-configuration_variables: dict[str, Any] = {
-    "cache_name": "./cache/cache.sqlite",
-    "allowed_codes": (200,),
-    "allowed_methods": ("GET",),
-}
 
 TARGETS: list[IdentifierType] = [
     IdentifierType(
@@ -45,7 +39,7 @@ TARGETS: list[IdentifierType] = [
 
 def main() -> None:
     with CascadeWrapperBase(
-        environment_variables, configuration_variables
+        environment_variables
     ) as cascade:
         cascade.operations.read(TARGETS)
 

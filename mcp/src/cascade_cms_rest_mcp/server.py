@@ -26,7 +26,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from . import data_structure, errors, formatting, resolution, security
 from . import query as query_module
-from .config import cache_configuration, load_environment_variables
+from .config import load_environment_variables, log_directory
 
 mcp = MCPServer(
     name="cascade-cms",
@@ -55,9 +55,9 @@ def _wrapper() -> CascadeWrapperBase:
     race. exit_on_failure=False keeps the library from raising SystemExit
     at `with` exit; failures surface as values or CascadeBatchError. This also matches every existing precedent in the repo (README,
     skill templates, tests/edit_test.py): a short-lived `with
-    CascadeWrapperBase(...) as cascade:` block per unit of work. The
-    file-backed SQLite cache still persists hits across calls even though the
-    connection object doesn't.
+    CascadeWrapperBase(...) as cascade:` block per unit of work. Log
+    files go to a stable per-user directory (see config.log_directory),
+    not the launch directory.
     """
     try:
         environment = load_environment_variables()
@@ -65,7 +65,7 @@ def _wrapper() -> CascadeWrapperBase:
         # SystemExit is not an Exception and must never escape a tool call.
         raise ToolError(str(exc)) from exc
     return CascadeWrapperBase(
-        environment, cache_configuration(), exit_on_failure=False
+        environment, exit_on_failure=False, log_dir=log_directory()
     )
 
 
@@ -85,9 +85,12 @@ def cascade_search(
     query: str,
     site: str,
     asset_types: list[str] | None = None,
-    limit: int = 20,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     """Search a Cascade site for assets by text; returns id/type/path/name per match.
+
+    limit: max matches returned; default 50, clamped to 1..200. Results of
+    blocked or unsupported asset types are dropped (filtered_count says how many).
 
     total_count/has_more describe what Cascade returned in THIS response, not
     a true site-wide match count - Cascade's search API exposes no such count.
@@ -98,6 +101,11 @@ def cascade_search(
         # set; an invalid value fails SearchInformation's own validation below
         # and is caught by the except Exception clause, surfacing as a
         # ToolError rather than silently doing the wrong thing.
+        for asset_type in asset_types or []:
+            if not security.is_asset_type_allowed(asset_type):
+                raise errors.blocked_asset_type_error(
+                    asset_type, context="cascade_search"
+                )
         payload = SearchInformation(
             site_name=site,
             search_terms=query,
@@ -175,6 +183,8 @@ def cascade_query_asset(
     "$.metadata.dynamicFields[3].name") so a collapsed nested match's
     expand_with hint is a concrete, ready-to-run follow-up query. A query
     that matches nothing returns an empty matches list, not an error.
+
+    limit: max items returned; default 50, clamped to 1..200.
     """
     try:
         _guard_asset_type(identifier, context="cascade_query_asset")
@@ -218,6 +228,8 @@ def cascade_get_data_structure(
 
     node_identifier omitted: lists the group's immediate fields/subgroups.
     node_identifier given: returns that one field's full definition.
+
+    limit: max items returned; default 50, clamped to 1..200.
     """
     try:
         _guard_asset_type(identifier, context="cascade_get_data_structure")
@@ -261,7 +273,7 @@ def cascade_get_data_structure(
             listing = formatting.truncate_list(
                 data_structure.list_children(group_node),
                 key="children",
-                limit=limit or formatting.DEFAULT_LIST_LIMIT,
+                limit=limit,
                 expand_with=expand_with,
             )
             return {"group": group, "data_definition": meta, **listing}
@@ -305,6 +317,8 @@ def cascade_get_page_config(
     configuration_name given, page_region omitted: names the regions actually
     authored on this instance for that configuration.
     Both given: returns that region's content.
+
+    limit: max items returned; default 50, clamped to 1..200.
     """
     try:
         _guard_asset_type(identifier, context="cascade_get_page_config")
@@ -345,7 +359,7 @@ def cascade_get_page_config(
             listing = formatting.truncate_list(
                 available,
                 key="configurations",
-                limit=limit or formatting.DEFAULT_LIST_LIMIT,
+                limit=limit,
                 expand_with=(
                     'cascade_read_asset(identifier={"id": "'
                     f'{content_type.get("id")}", "type": "contenttype"}}, format="detailed")'
@@ -439,7 +453,10 @@ def cascade_root_container_id(
 
 @mcp.tool()
 def cascade_list_sites(limit: int | None = None) -> dict[str, Any]:
-    """List every site on this Cascade server."""
+    """List every site on this Cascade server.
+
+    limit: max items returned; default 50, clamped to 1..200.
+    """
     try:
         with _wrapper() as cascade:
             cascade.operations.listSites()
@@ -457,7 +474,7 @@ def cascade_list_sites(limit: int | None = None) -> dict[str, Any]:
             if isinstance(e, IdentifierType)
         ]
         return formatting.truncate_list(
-            sites, key="sites", limit=limit or formatting.DEFAULT_LIST_LIMIT
+            sites, key="sites", limit=limit
         )
     except ToolError:
         raise

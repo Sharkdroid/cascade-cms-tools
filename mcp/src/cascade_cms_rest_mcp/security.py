@@ -100,9 +100,15 @@ ALLOWED_ASSET_TYPES: tuple[str, ...] = (
 )
 
 
+# Compared case-insensitively on both sides; the tuples above stay the
+# source of truth (they keep the library's real mixed-case values).
+_BLOCKED_FOLDED = frozenset(t.casefold() for t in BLOCKED_ASSET_TYPES)
+_ALLOWED_FOLDED = frozenset(t.casefold() for t in ALLOWED_ASSET_TYPES)
+
+
 def is_asset_type_blocked(asset_type: str) -> bool:
-    return asset_type.lower() in BLOCKED_ASSET_TYPES
+    return asset_type.casefold() in _BLOCKED_FOLDED
 
 
 def is_asset_type_allowed(asset_type: str) -> bool:
-    return asset_type.lower() in ALLOWED_ASSET_TYPES
+    return asset_type.casefold() in _ALLOWED_FOLDED

@@ -4,7 +4,6 @@
 import csv
 import os
 from pathlib import Path as FilePath
-from typing import Any
 
 from cascade_cms.cmstypes import (
     IdentifierType,
@@ -20,11 +19,6 @@ environment_variables: EnvironmentVars = {
     "API_KEY": os.environ["CASCADE_API_KEY"],
     "CASCADE_URL": os.environ["CASCADE_URL"],
     "SERVER": os.environ.get("SERVER", "default"),
-}
-configuration_variables: dict[str, Any] = {
-    "cache_name": "./cache/cache.sqlite",
-    "allowed_codes": (200,),
-    "allowed_methods": ("GET",),
 }
 
 CSV_PATH: FilePath = FilePath(
@@ -62,7 +56,7 @@ def main() -> None:
         return
 
     with CascadeWrapperBase(
-        environment_variables, configuration_variables
+        environment_variables
     ) as cascade:
         # One create() per payload: each becomes its own
         # chain, so .success / .failed are per asset. A

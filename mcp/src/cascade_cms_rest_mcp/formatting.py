@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from cascade_cms.cmstypes import Asset, IdentifierType, ListElements
 
-from . import query
+from . import query, security
 from .references import find_references
 
 # "structuredData" is Cascade's documented REST field name for data-bound
@@ -35,6 +35,19 @@ _DEFAULT_EXPAND_HINT = (
     'cascade_query_asset(query="<key>") for a narrowed read, or '
     'cascade_read_asset(format="detailed") for everything'
 )
+
+# `limit` is how many matches or list items a tool returns to the agent.
+DEFAULT_LIMIT = 50
+MIN_LIMIT = 1
+MAX_LIMIT = 200
+
+
+def clamp_limit(limit: int | None) -> int:
+    """None -> DEFAULT_LIMIT; anything else clamped to MIN..MAX."""
+    if limit is None:
+        return DEFAULT_LIMIT
+    return max(MIN_LIMIT, min(MAX_LIMIT, limit))
+
 
 _SCALAR_TYPES = (str, int, float, bool, type(None))
 
@@ -92,7 +105,7 @@ def format_query_result(
     format: Literal["concise", "detailed"],
     limit: int | None = None,
 ) -> dict[str, Any]:
-    truncated = matches[: limit or DEFAULT_LIST_LIMIT]
+    truncated = matches[: clamp_limit(limit)]
     if format == "detailed":
         shaped = [{"path": m.path, "value": m.value} for m in truncated]
     else:
@@ -126,32 +139,41 @@ def describe_element(element: IdentifierType) -> dict[str, Any]:
     }
 
 
-def format_search_results(elements: ListElements, *, limit: int) -> dict[str, Any]:
+def format_search_results(
+    elements: ListElements, *, limit: int | None = None
+) -> dict[str, Any]:
     """Cascade's search endpoint has no limit/page-size param
     (`SearchInformation` has no such field) and exposes no total-match-count
     either, so limiting and counting both happen client-side here:
-      - total_count = number of elements Cascade actually returned in THIS
-        response (NOT a true site-wide match count - Cascade doesn't expose one).
+      - results whose type is blocked or not on the allowlist are
+        dropped first; filtered_count reports how many (only present
+        when something was dropped).
+      - total_count = number of permitted elements Cascade returned in
+        THIS response (NOT a true site-wide match count).
       - has_more = whether client-side truncation to `limit` actually dropped any.
     """
+    limit = clamp_limit(limit)
     identifiers = [e for e in elements.flat if isinstance(e, IdentifierType)]
-    total_returned = len(identifiers)
-    truncated = identifiers[:limit]
-    return {
+    permitted = [
+        e for e in identifiers if security.is_asset_type_allowed(str(e.get_type))
+    ]
+    truncated = permitted[:limit]
+    result: dict[str, Any] = {
         "results": [describe_element(e) for e in truncated],
-        "total_count": total_returned,
-        "has_more": total_returned > limit,
+        "total_count": len(permitted),
+        "has_more": len(permitted) > limit,
     }
-
-
-DEFAULT_LIST_LIMIT = 50
+    dropped = len(identifiers) - len(permitted)
+    if dropped:
+        result["filtered_count"] = dropped
+    return result
 
 
 def truncate_list(
     items: list[Any],
     *,
     key: str,
-    limit: int = DEFAULT_LIST_LIMIT,
+    limit: int | None = None,
     expand_with: str | None = None,
 ) -> dict[str, Any]:
     """Cap a list for LLM consumption, wrapped under `key` with the same
@@ -162,6 +184,7 @@ def truncate_list(
     so an agent that needs the full picture knows where to get it in one call
     rather than discovering the detailed-mode fallback on its own.
     """
+    limit = clamp_limit(limit)
     result: dict[str, Any] = {
         key: items[:limit],
         "total_count": len(items),
@@ -188,7 +211,7 @@ def sort_by_relevance(names: list[str], guess: str) -> list[str]:
 
 
 def format_names_for_message(
-    names: list[str], *, limit: int = DEFAULT_LIST_LIMIT
+    names: list[str], *, limit: int = DEFAULT_LIMIT
 ) -> str:
     """Join names for embedding in a self-correcting ToolError message, capped."""
     shown = ", ".join(names[:limit])

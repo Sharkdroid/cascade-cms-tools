@@ -652,7 +652,7 @@ def test_failed_read_with_real_wrapper_is_tool_error(monkeypatch):
     """
     import asyncio
 
-    from cascade_cms.operation_logger import OperationLogger
+    from cascade_cms import OperationLogger
     from cascade_cms.operations import Operations
     from cascade_cms.wrapper import CascadeWrapperBase
 
@@ -709,3 +709,62 @@ def test_mcp_source_only_queues_read_operations():
 
     assert used, "guard found no operations - is it still scanning?"
     assert used <= read_only, f"non-read operations: {used - read_only}"
+
+
+def test_cascade_search_rejects_blocked_asset_type_before_request(
+    patch_wrapper,
+):
+    patch_wrapper([])
+
+    with pytest.raises(ToolError) as exc_info:
+        server.cascade_search(query="x", site="s", asset_types=["user"])
+
+    assert "not accessible" in str(exc_info.value)
+
+
+def test_cascade_search_filters_blocked_results(patch_wrapper):
+    blocked = {
+        "id": str(uuid.uuid4()),
+        "type": "user",
+        "path": {"path": "/u", "siteName": "s"},
+    }
+    ok = _identifier().model_dump(by_alias=True)
+    patch_wrapper([ListElements.model_validate({"matches": [blocked, ok]})])
+
+    result = server.cascade_search(query="x", site="s")
+
+    assert result["total_count"] == 1
+    assert result["filtered_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "limit,expected", [(0, 1), (-1, 1), (None, 5), (500, 5)]
+)
+def test_list_sites_limit_clamping(patch_wrapper, limit, expected):
+    raw = [_identifier().model_dump(by_alias=True) for _ in range(5)]
+    patch_wrapper([ListElements.model_validate({"matches": raw})])
+
+    result = server.cascade_list_sites(limit=limit)
+
+    assert len(result["sites"]) == expected
+
+
+def test_wrapper_passes_log_dir_and_creates_no_local_logs(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CASCADE_API_KEY", "k")
+    monkeypatch.setenv("CASCADE_URL", "https://x")
+    monkeypatch.setenv("CASCADE_MCP_LOG_DIR", str(tmp_path / "logs-elsewhere"))
+    captured = {}
+
+    def fake(*args, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(server, "CascadeWrapperBase", fake)
+
+    server._wrapper()
+
+    assert captured["log_dir"] == tmp_path / "logs-elsewhere"
+    assert captured["exit_on_failure"] is False
+    assert not (tmp_path / "logs").exists()

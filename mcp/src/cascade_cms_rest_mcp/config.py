@@ -34,23 +34,16 @@ def load_environment_variables() -> EnvironmentVars:
     )
 
 
-def cache_configuration() -> dict[str, object]:
-    """`configurationVariables` for CascadeWrapperBase.
+def log_directory() -> Path:
+    """Where the library writes its per-run log files.
 
-    Uses an explicit, stable cache path rather than the library's
-    CWD-relative `./cache/cache.sqlite` default, since an MCP client
-    (uvx, Claude Desktop, ...) launches this process from an unpredictable
-    working directory - a relative path would scatter cache dirs.
-    Override with CASCADE_MCP_CACHE_DIR for advanced use / testing.
+    A fixed per-user location rather than the library's CWD-relative
+    `./logs` default, since an MCP client (uvx, Claude Desktop, ...)
+    launches this process from an unpredictable working directory.
+    Override with CASCADE_MCP_LOG_DIR. The library creates the
+    directory if it is missing.
     """
-    cache_dir = Path(
-        os.environ.get(
-            "CASCADE_MCP_CACHE_DIR", str(Path.home() / ".cache" / "cascade-cms-mcp")
-        )
-    )
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return {
-        "cache_name": str(cache_dir / "cache.sqlite"),
-        "allowed_codes": (200,),
-        "allowed_methods": ("GET",),
-    }
+    override = os.environ.get("CASCADE_MCP_LOG_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "state" / "cascade-cms-mcp" / "logs"
