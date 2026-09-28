@@ -9,10 +9,16 @@ Asset writes are ATTRIBUTE assignment (`asset.displayName =
 rejects a type change on an existing field: if `name` is
 currently a str, assigning an int raises TypeError.
 
-One chain per target: `read(identifier).edit(identifier,
-apply_edits)` reads the asset, then `edit()`'s callable
-payload is invoked with that result to produce the saved
-version. A chain that fails to read never reaches edit — its
+This is the preferred edit shape. One chain per target:
+`read(identifier).edit(apply_edits)` reads the asset, then
+`edit()`'s callable payload is invoked with that result to
+produce the saved version. To edit assets you read EARLIER
+in the script, see edit-held-assets.
+
+TARGETS can come from anywhere (a list, JSON, a database,
+an API, a search); it is only a placeholder here.
+
+A chain that fails to read never reaches edit — its
 chain is recorded in `results.failed` and is left out
 of `results.success`.
 """
@@ -37,6 +43,7 @@ environment_variables: EnvironmentVars = {
     "SERVER": os.environ.get("SERVER", "default"),
 }
 
+# Placeholder: any source of identifiers works.
 TARGETS: list[IdentifierType] = [
     IdentifierType(
         id=uuid.UUID("e868f539ac1001062cfa029c4c5df4d0"),
@@ -60,7 +67,7 @@ def main() -> None:
     ) as cascade:
         for identifier in TARGETS:
             cascade.operations.read(identifier).edit(
-                identifier, apply_edits
+                apply_edits
             )
 
         results = cascade.submit_requests(CascadeSuccess)

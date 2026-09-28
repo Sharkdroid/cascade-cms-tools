@@ -27,6 +27,11 @@ Checks, each gating the next:
                           asset.get("pageConfigurations..."): cascade-cms-rest
                           3.1.6 warns there and points to the designated
                           accessors.
+ 12. edit() arguments   - ERROR when .edit() on an operations chain gets
+                          more than one positional argument
+                          (read(x).edit(identifier, fn) is wrong).
+ 13. Submit in a loop   - warns when submit_requests() sits in a loop or
+                          recursion; opt out with `# barrier: <reason>`.
 
 Usage:
     python validate_script.py path/to/generated_script.py
@@ -787,6 +792,114 @@ def check_deprecated_get(tree: ast.Module) -> None:
     print("[OK] Deprecated get() check passed" + (" (with warnings)" if warnings else ""))
 
 
+def check_edit_arguments(tree: ast.Module) -> None:
+    """Level 12: ERROR when .edit() on an operations chain gets more
+    than one positional argument. edit() takes (payload, parser=...), so
+    `read(x).edit(identifier, fn)` passes the identifier as the payload
+    and fn as the parser. Use `read(x).edit(fn)`."""
+    errors = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        links = _chain_links(node)
+        if not links or links[-1] is not node:
+            continue
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "edit"
+            and len(node.args) > 1
+        ):
+            errors.append(node.lineno)
+    for line in errors:
+        print(
+            f"[EDIT ERROR] line {line}: edit() takes (payload, "
+            "parser=...). read(x).edit(identifier, fn) passes the "
+            "identifier as the payload. Use read(x).edit(fn)."
+        )
+    if errors:
+        sys.exit(1)
+    print("[OK] edit() arguments check passed")
+
+
+def _has_barrier_marker(lines: list[str], *linenos: int) -> bool:
+    for n in linenos:
+        if 1 <= n <= len(lines) and "# barrier:" in lines[n - 1]:
+            return True
+    return False
+
+
+def _is_submit(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "submit_requests"
+    )
+
+
+def check_submit_in_loop(tree: ast.Module, source: str) -> None:
+    """Level 13: WARN when submit_requests() runs once per iteration —
+    inside a for/while body, inside a directly recursive function, or
+    via a same-module helper that submits and is called in a loop.
+    Opt out with a `# barrier: <reason>` comment on the call's lines, the
+    line above it, or the enclosing loop's header line."""
+    lines = source.splitlines()
+    submitters: set[str] = set()
+    recursive: set[str] = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        for sub in ast.walk(fn):
+            if _is_submit(sub):
+                submitters.add(fn.name)
+            if (
+                isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Name)
+                and sub.func.id == fn.name
+            ):
+                recursive.add(fn.name)
+
+    warned: set[int] = set()
+
+    def flag(call: ast.Call, header: int | None) -> None:
+        end = call.end_lineno or call.lineno
+        marked = _has_barrier_marker(
+            lines, *range(call.lineno, end + 1), call.lineno - 1
+        ) or (header is not None and _has_barrier_marker(lines, header))
+        if not marked:
+            warned.add(call.lineno)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For | ast.While | ast.AsyncFor):
+            for stmt in node.body + node.orelse:
+                for sub in ast.walk(stmt):
+                    if _is_submit(sub):
+                        flag(sub, node.lineno)  # type: ignore[arg-type]
+                    elif (
+                        isinstance(sub, ast.Call)
+                        and isinstance(sub.func, ast.Name)
+                        and sub.func.id in submitters
+                    ):
+                        flag(sub, node.lineno)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            if node.name in recursive and node.name in submitters:
+                for sub in ast.walk(node):
+                    if _is_submit(sub):
+                        flag(sub, node.lineno)  # type: ignore[arg-type]
+    for line in sorted(warned):
+        print(
+            f"[BARRIER WARNING] line {line}: submit_requests() "
+            "inside a loop is a barrier per iteration. Batch to "
+            "the level, not the item (SKILL.md). If this is a "
+            "deliberate level-by-level fetch, add "
+            "'# barrier: <reason>'."
+        )
+    print(
+        "[OK] Submit-in-loop check passed"
+        + (" (with warnings)" if warned else "")
+    )
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python validate_script.py path/to/generated_script.py")
@@ -808,6 +921,8 @@ def main():
     check_result_type(tree)
     check_construction(tree, source)
     check_deprecated_get(tree)
+    check_edit_arguments(tree)
+    check_submit_in_loop(tree, source)
 
     print("\nAll static checks passed. No network calls were made.")
 

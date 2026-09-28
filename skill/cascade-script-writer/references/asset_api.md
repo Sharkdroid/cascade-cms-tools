@@ -70,6 +70,10 @@ Mutating an `Asset` changes an in-memory object. To persist it:
 
 ```python
 cascade.operations.edit(asset)          # one chain per asset
+# Preferred: read(x).edit(fn). Exception: assets read EARLIER in
+# the script may be edited later with edit(asset), one call per
+# asset (template edit-held-assets); the held Asset is a snapshot.
+# Folder children: cascade_cms.utils.to_identifiers(asset.get("children"))
 # A list is ONE chain whose result is a list (see SKILL.md)
 results = cascade.submit_requests(CascadeSuccess)
 ```

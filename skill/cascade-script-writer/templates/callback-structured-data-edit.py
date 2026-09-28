@@ -5,7 +5,7 @@ get_data_structure(group, identifier) returns matching nodes
 BY REFERENCE — mutating a returned node mutates the asset
 itself.
 
-One chain per target: `read(identifier).edit(identifier,
+One chain per target: `read(identifier).edit(
 update_contact)` reads the asset, then `edit()`'s callable
 payload (`update_contact`) is invoked with that result — it
 mutates and returns the asset, which is what gets saved.
@@ -59,7 +59,7 @@ def main() -> None:
     ) as cascade:
         for identifier in TARGETS:
             cascade.operations.read(identifier).edit(
-                identifier, update_contact
+                update_contact
             )
 
         results = cascade.submit_requests(CascadeSuccess)

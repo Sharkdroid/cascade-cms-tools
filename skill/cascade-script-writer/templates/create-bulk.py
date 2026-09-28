@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
-"""Create many assets in one batch from CSV rows."""
+"""Create many assets in one batch from any row source.
 
-import csv
+`create` needs no earlier step: only a NewAsset that passes
+its own validation. Every NewAsset is built BEFORE the
+wrapper opens, so bad rows are reported together and no
+request is sent. If a create needs data from Cascade (a
+data definition, say), fetch it in an earlier phase (see
+read-graph), then build the NewAsset.
+
+Failures map back to input rows via the FULL results list
+and `results.failed` (`chain_index` is 1-based per batch).
+Never zip `results.success` against your inputs.
+"""
+
 import os
-from pathlib import Path as FilePath
 
 from cascade_cms.cmstypes import (
     IdentifierType,
@@ -21,24 +31,31 @@ environment_variables: EnvironmentVars = {
     "SERVER": os.environ.get("SERVER", "default"),
 }
 
-CSV_PATH: FilePath = FilePath(
-    "./assets.csv"
-)  # columns: name,title,folder
 SITE_NAME: str = "www"
 
+# Placeholder: rows can come from anywhere (CSV, JSON, a
+# database, an API). Swap this one list for your source.
+ROWS: list[dict[str, str]] = [
+    {"name": "about", "title": "About", "folder": "/"},
+    {"name": "news", "title": "News", "folder": "/"},
+]
 
-def build_payloads() -> list[NewAsset]:
-    payloads = []
-    with CSV_PATH.open(newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
+
+def build_payloads(
+    rows: list[dict[str, str]],
+) -> tuple[list[NewAsset], list[str]]:
+    """Pure: no I/O. Returns payloads and row errors."""
+    payloads: list[NewAsset] = []
+    errors: list[str] = []
+    for index, row in enumerate(rows):
+        try:
             payloads.append(
                 NewAsset(
                     name=row["name"],
                     asset_type="page",
                     # Exactly one of site_name/site_id and
                     # exactly one of parent_folder_path/
-                    # parent_folder_id — both-or-neither
-                    # fails.
+                    # parent_folder_id.
                     site_name=SITE_NAME,
                     parent_folder_path=row["folder"],
                     # extra="allow": type-specific fields
@@ -46,35 +63,37 @@ def build_payloads() -> list[NewAsset]:
                     title=row["title"],
                 )
             )
-    return payloads
+        except (KeyError, ValueError) as err:
+            errors.append(f"row {index} invalid: {err}")
+    return payloads, errors
 
 
 def main() -> None:
-    payloads = build_payloads()
+    payloads, errors = build_payloads(ROWS)
+    if errors:
+        for message in errors:
+            print(message)
+        return
     if not payloads:
-        print(f"No rows in {CSV_PATH}.")
+        print("No rows.")
         return
 
     with CascadeWrapperBase(
         environment_variables
     ) as cascade:
         # One create() per payload: each becomes its own
-        # chain, so .success / .failed are per asset. A
-        # single create(payloads) list is ONE chain whose
-        # result is a list.
+        # chain. A single create(payloads) list is ONE
+        # chain whose result is a list.
         for payload in payloads:
             cascade.operations.create(payload)
 
         results = cascade.submit_requests(IdentifierType)
 
-        created = 0
-        for result in results.success:
-            created += 1
-            kind, new_id = (
-                result.get_type,
-                result.get_id,
-            )
-            print(f"Created {kind} {new_id}")
+        # chain_index is 1-based within this batch.
+        for failure in results.failed:
+            row = failure.chain_index - 1
+            print(f"row {row} failed: {failure.message}")
+        created = len(payloads) - len(results.failed)
         print(f"{created}/{len(payloads)} created.")
 
 

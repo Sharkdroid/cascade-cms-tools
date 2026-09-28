@@ -21,8 +21,12 @@ publish templates) are delivered in stages — see `SKILL.md` Step 6.
 |---|---|
 | Read specific assets by UUID and/or site+path | `read-identifiers` |
 | Find assets by search, then read each one | `read-iterate` |
-| Create many assets from a CSV or list | `create-bulk` |
-| Read assets, change fields, save them back | `edit-in-place` |
+| Create many assets from any row source (list, JSON, DB, API) | `create-bulk` |
+| Read assets, change fields, save them back (preferred edit) | `edit-in-place` |
+| Edit assets you read EARLIER in the script (the one exception) | `edit-held-assets` |
+| Walk a folder tree, one submit per level | `read-tree` |
+| Follow references (page, content type, data definition) level by level | `read-graph` |
+| Independent create + edit | queue both chains in one batch: `create-bulk` for the create half, `edit-in-place` for the edit half. If the edit targets an asset the create makes, that is a true dependency: two submits, staged per Step 6 |
 | Read an asset's workflow and advance it | `workflow-orchestration` |
 | Do the same work across several sites at once | `concurrent-multisite` |
 | Simple task, results handled in a plain loop | `callback-none` |
@@ -33,7 +37,7 @@ publish templates) are delivered in stages — see `SKILL.md` Step 6.
 |---|---|
 | Run several transforms in order on each result | `callback-chain` |
 | Handle mixed result types / tell success from failure | `callback-type-dispatch` |
-| Feed results into a second, dependent batch | `callback-dependent` |
+| Feed results into a second, dependent batch (only for a TRUE dependency: B needs a field from A's result; independent reads belong in ONE batch) | `callback-dependent` |
 | Queue a follow-up publish based on what was read | `callback-conditional-publish` |
 | Call an async API per result | `callback-async-io` |
 | Combine a sync transform with an async hand-off | `callback-mixed-sync-async` |

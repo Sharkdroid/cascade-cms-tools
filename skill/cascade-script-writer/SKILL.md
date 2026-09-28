@@ -38,7 +38,9 @@ file they load themselves, or values typed into the config block. Do
 not pick one silently, and never write a real API key into the script.
 
 **Step 2 — Pick a template.** Read `templates/INDEX.md` and choose the row
-matching the task shape. Do not write a script from scratch — the 19 templates
+matching the task shape. Only name a template that
+`python scripts/new_script.py --list` prints; never cite or invent a name from
+memory. Do not write a script from scratch — the templates
 all pass the validator as written, so starting from one means only your
 task-specific edits can break it.
 
@@ -147,6 +149,13 @@ than implying full coverage.
 [ ] ruff format --line-length 60 --isolated run on the file
 [ ] No line longer than 60 characters (code, comments, docstrings)
 [ ] validate_script.py exits 0
+[ ] No submit_requests() inside a loop, recursion or per-item helper
+    (unless marked "# barrier:" for a level-by-level fetch)
+[ ] Independent reads queued in the same batch; submits == dependency depth
+[ ] References resolved level by level from a memo dict
+[ ] Read-then-write on the same asset is one chain, read(x).edit(fn)
+    (exception: edit-held-assets)
+[ ] Template names come from new_script.py --list, never from memory
 [ ] Scripts with writes: delivered one write at a time, each stage's log read by you (Step 6)
 ```
 
@@ -155,6 +164,40 @@ than implying full coverage.
 **Queue, then submit.** `cascade.operations.<op>(...)` queues a request.
 Nothing hits the network until `cascade.submit_requests()`, which runs the whole
 batch concurrently and then clears the queue. One `submit_requests()` per batch.
+
+### Barrier rules
+
+Every `submit_requests()` is a barrier; batch to the level, not the item.
+Chains inside one submit run concurrently (up to 50 in flight); two submits
+never overlap. Waiting time is roughly (number of submits) x (slowest
+request per submit), so minimise submits, not requests.
+
+1. Never call `submit_requests()` inside a loop, a recursive function, a
+   parser, or a per-item helper. Collect identifiers first, queue one
+   `read([...])`, submit once, then process from a dict. The one exception
+   is a deliberate level loop (e.g. template `read-tree`), marked with
+   `# barrier: <reason>` on the innermost loop's header line.
+2. Independent reads share one submit. If B and C depend only on A, read A,
+   then queue B and C together. Sequential submits are for a real data
+   dependency only.
+3. Discover, then fetch, then parse. Queue every unseen identifier at the
+   current level, submit once, inspect results for the next level. Keep
+   parsing free of I/O.
+4. Memoise by identifier. The library has no request cache. Keep a dict of
+   what was fetched; never queue an identifier twice.
+5. Do not hide a submit inside a helper. If a helper submits, put "submit"
+   in its name and call it only from top-level orchestration.
+6. List-driven scripts run in phases, not per item: validate/build
+   everything first, read everything in one submit, transform in memory,
+   write everything in one submit.
+7. Chain a dependent write instead of submitting twice. When a write only
+   needs the previous read's result, use `read(x).edit(fn)` or
+   `read(x).create(fn)`.
+8. Do not catch `CascadeBatchError` per item. A broken batch should stop
+   the run.
+
+The validator warns on a submit inside a loop or recursion. It cannot
+enforce "keep the held-asset gap short"; that rule is guidance.
 
 **Results come back in creation order.** `submit_requests()` returns one
 entry per queued chain, in the order the chains were created (one per
@@ -336,6 +379,23 @@ not stop the chain (see the list note below). The callable form works
 only as a chained step; the first operation in a chain
 (`cascade.operations.create(...)`) needs a concrete value.
 
+### Create vs edit
+
+- `create(payload)` needs no earlier step. It takes a `NewAsset`, which is
+  validated when you construct it. Build every `NewAsset` before opening the
+  wrapper. One `create()` per payload gives one chain each.
+- `edit` needs an existing `Asset`, which comes from a read. Preferred:
+  `read(x).edit(fn)`. One chain, one submit, fresh data. `edit` takes
+  `(payload, parser=...)`, so `read(x).edit(identifier, fn)` is wrong.
+- Exception: assets you read EARLIER in the same script may be edited LATER
+  with `edit(asset)`, one `edit()` call per asset (template
+  `edit-held-assets`). The held `Asset` is a snapshot and the edit
+  overwrites whatever changed in Cascade meanwhile. Keep the gap short and
+  re-read if anything in between could change those assets.
+- If a create needs data from Cascade (for example a data definition),
+  fetch it in an earlier phase (template `read-graph`), then build the
+  `NewAsset`.
+
 **After a list `create` or `edit`,** a following callback receives a
 list that may contain `CascadeError` items. The chain does not stop on
 per-item errors, so check each item before using it. (The chain is
@@ -345,6 +405,19 @@ chain, and one `.success` / `.failed` entry, per asset, queue one
 
 Shared state touched from a sync callback needs a
 `threading.Lock`.
+
+### to_identifiers
+
+```python
+from cascade_cms.utils import to_identifiers
+```
+
+`to_identifiers(asset.get("children"))` turns a folder's raw children
+entries into `IdentifierType` objects (recycled entries dropped unless
+`include_recycled=True`). It raises `ValueError`, naming the entry index,
+for a malformed entry. Use it instead of `IdentifierType(**child)`.
+`asset.get()` has no default, so guard a possibly missing key with
+`try/except KeyError`.
 
 ## Script conventions
 
@@ -542,7 +615,7 @@ Read these on demand — don't load them all up front.
 | File | Read it when |
 |---|---|
 | `templates/INDEX.md` | Always, at Step 2 — pick a starting template |
-| `templates/*.py` | 19 runnable, validator-passing scripts |
+| `templates/*.py` | 22 runnable, validator-passing scripts |
 | `references/operations_schema.json` | You need a signature, field name, or alias |
 | `references/asset_api.md` | The script reads or writes `Asset` fields |
 | `cascade_cms/*.py` | The schema isn't specific enough — ground truth |
@@ -559,7 +632,8 @@ cannot catch a script that is valid and solves the wrong problem.
 ## Keeping this skill in sync
 
 The bundled `cascade_cms/` is a **snapshot** of the *installed*
-`cascade-cms-rest` package (currently 3.3.0), so the validator can do real
+`cascade-cms-rest` package (its version is recorded in
+`cascade_cms/_bundle_manifest.json`), so the validator can do real
 Pydantic instantiation instead of schema lookups. A stale snapshot silently
 rejects correct scripts, so never copy files by hand. From the repo root, in
 the `.conda` environment:
@@ -571,7 +645,7 @@ the `.conda` environment:
 ```
 
 The build re-syncs the snapshot, rewrites `cascade_cms/_bundle_manifest.json`
-(version + per-file sha256), validates all 19 templates, and **aborts if any
+(version + per-file sha256), validates all 22 templates, and **aborts if any
 fails**. `validate_script.py` prints the bundled version on every run and warns
 when the snapshot no longer matches its manifest.
 
