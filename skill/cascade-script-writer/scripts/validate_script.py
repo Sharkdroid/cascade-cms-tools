@@ -32,6 +32,11 @@ Checks, each gating the next:
                           (read(x).edit(identifier, fn) is wrong).
  13. Submit in a loop   - warns when submit_requests() sits in a loop or
                           recursion; opt out with `# barrier: <reason>`.
+ 14. structuredData set - ERROR on x.structuredData = ... or
+                          setattr(x, "structuredData", ...): it replaces
+                          the whole data structure.
+ 15. structuredData read- warns on ._data["structuredData"]; use
+                          asset.get_data_structure(group, identifier).
 
 Usage:
     python validate_script.py path/to/generated_script.py
@@ -900,6 +905,82 @@ def check_submit_in_loop(tree: ast.Module, source: str) -> None:
     )
 
 
+def _target_attrs(target: ast.expr) -> list[ast.Attribute]:
+    """Attribute targets in an assignment target, unpacking included."""
+    if isinstance(target, ast.Attribute):
+        return [target]
+    if isinstance(target, ast.Tuple | ast.List):
+        found: list[ast.Attribute] = []
+        for elt in target.elts:
+            found.extend(_target_attrs(elt))
+        return found
+    if isinstance(target, ast.Starred):
+        return _target_attrs(target.value)
+    return []
+
+
+def check_structured_data_assignment(tree: ast.Module) -> None:
+    """Level 14: ERROR on wholesale assignment to structuredData
+    (`x.structuredData = ...`, augmented/annotated forms, tuple
+    unpacking, or setattr(x, "structuredData", ...)). It replaces
+    the whole data structure; edit specific nodes instead."""
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+            targets = [node.target]
+        for target in targets:
+            if any(a.attr == "structuredData" for a in _target_attrs(target)):
+                lines.append(node.lineno)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "setattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == "structuredData"
+        ):
+            lines.append(node.lineno)
+    for line in sorted(set(lines)):
+        print(
+            f"[STRUCTURED-DATA ERROR] line {line}: assigning "
+            "structuredData replaces the whole data structure. Edit "
+            "specific nodes: nodes = asset.get_data_structure(group, "
+            "identifier); set node['text']; return the asset."
+        )
+    if lines:
+        sys.exit(1)
+    print("[OK] structuredData assignment check passed")
+
+
+def check_structured_data_private_access(tree: ast.Module) -> None:
+    """Level 15: WARN on reading ._data["structuredData"], which walks
+    the whole structure by hand. ._data.get("structuredData") is left to
+    check_deprecated_get so it is not reported twice."""
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "_data"
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value == "structuredData"
+        ):
+            lines.append(node.lineno)
+    for line in sorted(set(lines)):
+        print(
+            f"[WARN] line {line}: reading ._data['structuredData'] "
+            "walks the whole structure by hand. Use "
+            "asset.get_data_structure(group, identifier)."
+        )
+    print(
+        "[OK] structuredData private-access check passed"
+        + (" (with warnings)" if lines else "")
+    )
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python validate_script.py path/to/generated_script.py")
@@ -923,6 +1004,8 @@ def main():
     check_deprecated_get(tree)
     check_edit_arguments(tree)
     check_submit_in_loop(tree, source)
+    check_structured_data_assignment(tree)
+    check_structured_data_private_access(tree)
 
     print("\nAll static checks passed. No network calls were made.")
 

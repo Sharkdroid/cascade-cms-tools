@@ -113,7 +113,10 @@ e. After the user says it ran, read the log file yourself: the path is
    output. On failure, diagnose from the log's `!ERROR:` lines and
    prefix (`[NETWORK]`, `[CASCADE-REST-CMS]`, or none for a Cascade
    error, including a non-200 status such as `501 Not Implemented`),
-   fix the script, validate again, and ask the user to run it again.
+   fix the script, validate again, and ask the user to run it again. A
+   guard of the script's own that fails inside an edit callable is logged
+   with the `[CASCADE-REST-CMS]` prefix (category LIBRARY); read the
+   message after `ValueError:`.
 f. For destructive operations on EXISTING assets (`delete`, `publish`,
    overwrite), the stage before the write is a read-only preview that
    calls `script_log.note()` once per affected asset (type and id
@@ -156,6 +159,8 @@ than implying full coverage.
 [ ] Read-then-write on the same asset is one chain, read(x).edit(fn)
     (exception: edit-held-assets)
 [ ] Template names come from new_script.py --list, never from memory
+[ ] Structured-data edits name a group AND a field, guard None and the
+    match count, and never touch structuredData as a whole
 [ ] Scripts with writes: delivered one write at a time, each stage's log read by you (Step 6)
 ```
 
@@ -322,7 +327,8 @@ when any segment is missing — there is no default argument, so guard with
 `pageConfigurations`: `get()` emits a warning for those roots. Use
 `asset.get_data_structure(group, identifier)` and
 `asset.get_page_configuration(name, region)` instead — they return live
-references you can edit in place.
+references you can edit in place. Assigning `structuredData` is a
+validator ERROR, and reading `._data["structuredData"]` is a warning.
 
 **UUIDs serialize as bare hex.** Cascade rejects dashed UUIDs, so
 `IdentifierType.identifier`, `NewAsset.site_id` and `NewAsset.parent_folder_id`
@@ -418,6 +424,84 @@ entries into `IdentifierType` objects (recycled entries dropped unless
 for a malformed entry. Use it instead of `IdentifierType(**child)`.
 `asset.get()` has no default, so guard a possibly missing key with
 `try/except KeyError`.
+
+### Editing structured-data nodes
+
+Address the smallest thing: one group, one field.
+
+```python
+nodes = asset.get_data_structure("contact", "phone")
+```
+
+It returns live references to the matching nodes, so setting a node's
+value edits the asset in place. Return the Asset from the callback.
+Template: `callback-structured-data-edit`.
+
+Do not fetch, print, return or replace `structuredData` as a whole:
+`asset.get("structuredData")`, `asset.structuredData = ...` and
+`asset._data["structuredData"]`. The library warns on the first and does
+not block the others. The validator fails the second and warns on the
+third.
+
+Names come from live data, not guesses. If the Cascade MCP server is
+connected, confirm group and field identifiers with
+`cascade_get_data_structure` before writing them into a script.
+Otherwise ask the user. `get_data_structure()` only sees nodes present in
+the asset it is called on, so it cannot tell a typo from an absent field.
+
+Guard the result. `get_data_structure()` returns `None` for any miss
+(typo, absent group, no structured data). A callback that then returns
+the unchanged asset makes the edit succeed with nothing changed. Raise
+inside the callback when the result is empty, and compare the count with
+what you expect: a group identifier can repeat and nest, and every group
+with that identifier is matched, nested ones included. If the count
+differs, stop and ask.
+
+Change only what you have confirmed. Confirm the node's live shape first
+(MCP, or a read-only preview stage). Text fields take the new value in
+`node["text"]`. For chooser, checkbox, multi-select or any other node
+kind, never guess the encoding: confirm that node's live shape and change
+only the fields you verified.
+
+Live data showed three details to respect:
+
+- A node's `type` in the asset is `text` for radio buttons and other
+  choosers too. The schema tells them apart: `cascade_get_data_structure`
+  with `node_identifier` reports the field's `type` (null for free text,
+  `radiobutton` and so on otherwise). Edit only fields whose schema type
+  is null.
+- A text node with no value has no `text` key at all, so a script must not
+  assume the key exists before it sets it.
+- The instance can hold a group that the schema lookup does not list. If
+  `cascade_get_data_structure` says a group is not found, check the
+  instance with `cascade_query_asset` before deciding the name is wrong.
+
+A raise in the edit callable is logged as a LIBRARY failure
+(`[CASCADE-REST-CMS]`) with your message after `ValueError:`. That prefix
+does not mean the library is at fault.
+
+Verify live, read-only. With the Cascade MCP server connected, check
+names and shapes before you write them into a script:
+
+- Do the group and field exist? Use
+  `cascade_get_data_structure(identifier, group, node_identifier)`. It
+  reads the SCHEMA (the bound data definition), and a wrong name gets you
+  the valid ones. It reports the first matching group only, so it cannot
+  show repeats or nesting.
+- What does the live node look like, and how many will match? Use
+  `cascade_query_asset(identifier, query, format="detailed")` with a
+  narrow path: `find("structuredDataNodes")` locates the tree and a
+  wildcard step lists one level at a time. Count matching nodes level by
+  level. Read shapes, not whole trees.
+- After a write stage, read the same node back with `cascade_query_asset`
+  and compare. The MCP has no write tools.
+
+Without the MCP, ask the user for the identifiers and the expected count,
+and say the node shape is unverified. The skill works either way.
+
+Stage the write (Step 6). The preview stage notes the asset id, the group
+and field, and the match count, never the values. After the first write,
+read the asset back to confirm the value.
 
 ## Script conventions
 

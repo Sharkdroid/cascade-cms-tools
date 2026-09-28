@@ -94,12 +94,21 @@ if region is not None:
     region.content = "<p>updated</p>"   # asset is now modified
 ```
 
-- `get_data_structure(group, identifier)` → `list[dict] | None`. Searches all
-  instances of the named group, returning the first matching node per instance.
+- `get_data_structure(group, identifier)` → `list[dict] | None`. Matches
+  EVERY group with that identifier, nested ones included, and returns the
+  matching node from each. Returns `None` on any miss (missing field or
+  group, empty group, no structured data), so guard it: a typo otherwise
+  edits nothing. A group node without `structuredDataNodes` raises
+  `KeyError`. The returned nodes are live references, so edits reach the
+  outgoing payload.
 - `get_page_configuration(name)` → `PageConfiguration | None`.
 - `get_page_configuration(name, region)` → `PageRegion | None`.
 
 Both return `None` when nothing matches — always guard before using the result.
+
+The library does not block `asset.structuredData = {...}` (a dict replaces a
+dict silently). The validator does: it is an ERROR. Never assign, print or
+return `structuredData` as a whole.
 
 ## Failed reads are reported by the wrapper
 
