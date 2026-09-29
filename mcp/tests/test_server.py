@@ -455,7 +455,7 @@ def test_cascade_get_page_config_page_region_without_configuration_name_raises(
         server.cascade_get_page_config(identifier=_identifier(), page_region="DEFAULT")
 
 
-def test_cascade_get_page_config_page_region_returns_content(
+def test_cascade_get_page_config_page_region_returns_bindings(
     patch_wrapper_sequence, content_type
 ):
     page_with_config = Asset(
@@ -466,7 +466,13 @@ def test_cascade_get_page_config_page_region_returns_content(
                     "pageConfigurations": [
                         {
                             "name": "ASPX",
-                            "pageRegions": [{"name": "DEFAULT", "content": "hello"}],
+                            "pageRegions": [
+                                {
+                                    "name": "DEFAULT",
+                                    "blockId": "b" * 32,
+                                    "blockPath": "blocks/main",
+                                }
+                            ],
                         }
                     ],
                 }
@@ -479,7 +485,10 @@ def test_cascade_get_page_config_page_region_returns_content(
         identifier=_identifier(), configuration_name="ASPX", page_region="DEFAULT"
     )
 
-    assert result["region"]["content"] == "hello"
+    assert result["region"]["block_id"] == "b" * 32
+    assert result["region"]["block_path"] == "blocks/main"
+    assert "content" not in result["region"]
+    assert "noBlock" in result["caution"]
 
 
 def test_cascade_get_page_config_page_region_not_authored_on_instance(

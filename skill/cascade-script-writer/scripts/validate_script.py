@@ -32,11 +32,13 @@ Checks, each gating the next:
                           (read(x).edit(identifier, fn) is wrong).
  13. Submit in a loop   - warns when submit_requests() sits in a loop or
                           recursion; opt out with `# barrier: <reason>`.
- 14. structuredData set - ERROR on x.structuredData = ... or
-                          setattr(x, "structuredData", ...): it replaces
-                          the whole data structure.
- 15. structuredData read- warns on ._data["structuredData"]; use
-                          asset.get_data_structure(group, identifier).
+ 14. Root assignment   - ERROR on x.structuredData = ... or
+                          x.pageConfigurations = ... (also augmented,
+                          annotated, unpacking, and setattr(x, "<root>",
+                          ...)); each message names that root's accessor.
+ 15. Root private read - warns on ._data["structuredData"] and
+                          ._data["pageConfigurations"]; use the accessor.
+                          (._data.get(...) is covered by level 11.)
 
 Usage:
     python validate_script.py path/to/generated_script.py
@@ -919,12 +921,33 @@ def _target_attrs(target: ast.expr) -> list[ast.Attribute]:
     return []
 
 
-def check_structured_data_assignment(tree: ast.Module) -> None:
-    """Level 14: ERROR on wholesale assignment to structuredData
-    (`x.structuredData = ...`, augmented/annotated forms, tuple
-    unpacking, or setattr(x, "structuredData", ...)). It replaces
-    the whole data structure; edit specific nodes instead."""
-    lines: list[int] = []
+# Roots that must go through a designated accessor: (label, ERROR hint).
+ACCESSOR_ROOT_RULES: dict[str, tuple[str, str, str]] = {
+    "structuredData": (
+        "STRUCTURED-DATA",
+        "replaces the whole data structure. Edit specific nodes: "
+        "nodes = asset.get_data_structure(group, identifier); set "
+        "node['text']; return the asset.",
+        "asset.get_data_structure(group, identifier)",
+    ),
+    "pageConfigurations": (
+        "PAGE-CONFIG",
+        "is read-only in cascade-cms-rest 3.7.0+ (it raises "
+        "ReadOnlyPageConfigError) and Cascade ignores region edits "
+        "on a page. Read one region with asset."
+        "get_page_configuration(name, region); edit regions on the "
+        "template asset and configurations on the "
+        "pageConfigurationSet asset.",
+        "asset.get_page_configuration(name, region)",
+    ),
+}
+
+
+def check_accessor_root_assignment(tree: ast.Module) -> None:
+    """Levels 14/16: ERROR on wholesale assignment to a root in
+    ACCESSOR_ROOT_RULES (`x.<root> = ...`, augmented/annotated
+    forms, tuple unpacking, or setattr(x, "<root>", ...))."""
+    found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         targets: list[ast.expr] = []
         if isinstance(node, ast.Assign):
@@ -932,52 +955,49 @@ def check_structured_data_assignment(tree: ast.Module) -> None:
         elif isinstance(node, ast.AnnAssign | ast.AugAssign):
             targets = [node.target]
         for target in targets:
-            if any(a.attr == "structuredData" for a in _target_attrs(target)):
-                lines.append(node.lineno)
+            for attr in _target_attrs(target):
+                if attr.attr in ACCESSOR_ROOT_RULES:
+                    found.append((node.lineno, attr.attr))
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "setattr"
             and len(node.args) >= 2
             and isinstance(node.args[1], ast.Constant)
-            and node.args[1].value == "structuredData"
+            and node.args[1].value in ACCESSOR_ROOT_RULES
         ):
-            lines.append(node.lineno)
-    for line in sorted(set(lines)):
-        print(
-            f"[STRUCTURED-DATA ERROR] line {line}: assigning "
-            "structuredData replaces the whole data structure. Edit "
-            "specific nodes: nodes = asset.get_data_structure(group, "
-            "identifier); set node['text']; return the asset."
-        )
-    if lines:
+            found.append((node.lineno, str(node.args[1].value)))
+    for line, root in sorted(set(found)):
+        label, hint, _ = ACCESSOR_ROOT_RULES[root]
+        print(f"[{label} ERROR] line {line}: assigning {root} {hint}")
+    if found:
         sys.exit(1)
-    print("[OK] structuredData assignment check passed")
+    print("[OK] structuredData/pageConfigurations assignment check passed")
 
 
-def check_structured_data_private_access(tree: ast.Module) -> None:
-    """Level 15: WARN on reading ._data["structuredData"], which walks
-    the whole structure by hand. ._data.get("structuredData") is left to
+def check_accessor_root_private_access(tree: ast.Module) -> None:
+    """Levels 15/17: WARN on reading ._data["<root>"] for a root in
+    ACCESSOR_ROOT_RULES. ._data.get("<root>") is left to
     check_deprecated_get so it is not reported twice."""
-    lines: list[int] = []
+    found: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Subscript)
             and isinstance(node.value, ast.Attribute)
             and node.value.attr == "_data"
             and isinstance(node.slice, ast.Constant)
-            and node.slice.value == "structuredData"
+            and node.slice.value in ACCESSOR_ROOT_RULES
         ):
-            lines.append(node.lineno)
-    for line in sorted(set(lines)):
+            found.append((node.lineno, str(node.slice.value)))
+    for line, root in sorted(set(found)):
+        accessor = ACCESSOR_ROOT_RULES[root][2]
         print(
-            f"[WARN] line {line}: reading ._data['structuredData'] "
-            "walks the whole structure by hand. Use "
-            "asset.get_data_structure(group, identifier)."
+            f"[WARN] line {line}: reading ._data['{root}'] walks the "
+            f"raw data by hand. Use {accessor}."
         )
     print(
-        "[OK] structuredData private-access check passed"
-        + (" (with warnings)" if lines else "")
+        "[OK] structuredData/pageConfigurations private-access check "
+        "passed" + (" (with warnings)" if found else "")
     )
 
 
@@ -1004,8 +1024,8 @@ def main():
     check_deprecated_get(tree)
     check_edit_arguments(tree)
     check_submit_in_loop(tree, source)
-    check_structured_data_assignment(tree)
-    check_structured_data_private_access(tree)
+    check_accessor_root_assignment(tree)
+    check_accessor_root_private_access(tree)
 
     print("\nAll static checks passed. No network calls were made.")
 

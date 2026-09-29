@@ -27,7 +27,8 @@ asset.asset_type                  # "page", "file", "folder", ...
   value").
 - **`structuredData` / `pageConfigurations` roots emit a warning.** They
   still resolve, but the library steers you to `get_data_structure()` and
-  `get_page_configuration()` below, which return editable live references.
+  `get_page_configuration()` below (structured-data nodes are editable live
+  references; page configurations/regions are read-only snapshots).
 
 ```python
 try:
@@ -91,7 +92,7 @@ if nodes:
 
 region = asset.get_page_configuration("ASPX", "FOOTER")
 if region is not None:
-    region.content = "<p>updated</p>"   # asset is now modified
+    print(region.block_path, region.format_path)   # read-only
 ```
 
 - `get_data_structure(group, identifier)` → `list[dict] | None`. Matches
@@ -105,6 +106,14 @@ if region is not None:
 - `get_page_configuration(name, region)` → `PageRegion | None`.
 
 Both return `None` when nothing matches — always guard before using the result.
+
+**Page configurations and regions are read-only (3.7.0+).** Any assignment
+raises `ReadOnlyPageConfigError`; there is no `.content`. Cascade ignores
+region edits sent with a page's `edit()`, so change regions on the `template`
+asset (`pageRegions`) and configurations on the `pageConfigurationSet` asset
+(`pageConfiguration`). **Do not trust Cascade's `noBlock`/`noFormat` flags** —
+they have been `false` with no `blockId`/`blockPath`/`formatId`/`formatPath`.
+Decide from the ids/paths and verify against the live server.
 
 The library does not block `asset.structuredData = {...}` (a dict replaces a
 dict silently). The validator does: it is an ERROR. Never assign, print or

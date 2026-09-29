@@ -326,8 +326,12 @@ when any segment is missing — there is no default argument, so guard with
 (`asset.get("metadata.dynamicFields")`), **not** for `structuredData` or
 `pageConfigurations`: `get()` emits a warning for those roots. Use
 `asset.get_data_structure(group, identifier)` and
-`asset.get_page_configuration(name, region)` instead — they return live
-references you can edit in place. Assigning `structuredData` is a
+`asset.get_page_configuration(name, region)` instead. Structured-data nodes
+are live references you can edit in place; page configurations and regions
+are READ-ONLY snapshots (3.7.0+) — Cascade ignores region edits on `edit()`,
+so edit the `template` asset's `pageRegions` (or the `pageConfigurationSet`
+asset) instead. Do not trust `noBlock`/`noFormat`: check
+`block_id`/`block_path`/`format_id`/`format_path`. Assigning `structuredData` is a
 validator ERROR, and reading `._data["structuredData"]` is a warning.
 
 **UUIDs serialize as bare hex.** Cascade rejects dashed UUIDs, so

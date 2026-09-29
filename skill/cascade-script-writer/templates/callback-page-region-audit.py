@@ -3,9 +3,10 @@
 
 get_page_configuration(name) returns a PageConfiguration;
 passing a region name too returns that single PageRegion.
-Both come back BY REFERENCE as Pydantic models, so assigning
-to `.content` edits the asset in place. This template only
-reads.
+Both are READ-ONLY snapshots (assignment raises
+ReadOnlyPageConfigError; regions are edited on the template
+asset). Do not trust Cascade's noBlock/noFormat flags: this
+template checks block_id/block_path instead.
 """
 
 import os
@@ -55,8 +56,8 @@ def audit_regions(result: Asset) -> None:
         )
         return
 
-    filled = bool(region.content and region.content.strip())
-    status = "populated" if filled else "EMPTY"
+    bound = bool(region.block_id or region.block_path)
+    status = "has a block" if bound else "NO BLOCK"
     print(f"{path}: {REQUIRED_REGION} {status}")
 
 

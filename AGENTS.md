@@ -86,6 +86,21 @@ distinction between the two same-named-but-different `get_data_structure`s.
 The skill remains fully usable without the MCP server connected — this is a
 preference, not a dependency.
 
+## Cascade API quirks — be cautious
+
+- **Do not trust Cascade's response fields blindly.** With a page region's
+  `blockId`/`blockPath` and `formatId`/`formatPath` removed, Cascade still
+  returned `noBlock: false` and `noFormat: false`. Derive "has a
+  block/format" from the ids/paths, not the flags, and verify surprising
+  state live (`cascade_get_page_config`, `cascade_read_asset`) before
+  writing a script that depends on it.
+- **Page regions and configurations are read-only** in `cascade-cms-rest`
+  >= 3.7.0 (`PageRegion`/`PageConfiguration` raise
+  `ReadOnlyPageConfigError` on assignment; `.content` is gone). Cascade
+  ignores region edits sent with a page's `edit()`. Edit regions on the
+  `template` asset (`pageRegions`) and configurations on the
+  `pageConfigurationSet` asset (`pageConfiguration`).
+
 ## Rebuilding the release bundle
 
 ```bash

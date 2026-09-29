@@ -9,6 +9,7 @@ module (or any future one) may wrap a write operation.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, Literal, cast
 
 from cascade_cms.cmstypes import (
@@ -301,6 +302,14 @@ def cascade_get_data_structure(
         ) from exc
 
 
+REGION_CAUTION = (
+    "Cascade's noBlock/noFormat flags are unreliable (they can be false "
+    "when no block/format id or path exists); trust the ids/paths. "
+    "Regions cannot be edited via an asset edit: edit the template "
+    "asset's pageRegions."
+)
+
+
 @mcp.tool()
 def cascade_get_page_config(
     identifier: IdentifierType | CascadePath,
@@ -316,7 +325,11 @@ def cascade_get_page_config(
     configuration_name omitted: lists available configuration names.
     configuration_name given, page_region omitted: names the regions actually
     authored on this instance for that configuration.
-    Both given: returns that region's content.
+    Both given: returns that region's block/format bindings.
+
+    Caution: regions are read-only snapshots and Cascade's noBlock/noFormat
+    flags are unreliable (seen false with no blockId/blockPath or
+    formatId/formatPath). Trust the ids/paths, not the flags.
 
     limit: max items returned; default 50, clamped to 1..200.
     """
@@ -405,7 +418,11 @@ def cascade_get_page_config(
                 region_names,
                 context="cascade_get_page_config",
             )
-        return {"configuration": match, "region": region.model_dump()}
+        return {
+            "configuration": match,
+            "region": dataclasses.asdict(region),
+            "caution": REGION_CAUTION,
+        }
     except ToolError:
         raise
     except Exception as exc:
