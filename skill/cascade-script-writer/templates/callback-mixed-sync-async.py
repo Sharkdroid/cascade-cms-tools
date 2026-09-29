@@ -36,10 +36,12 @@ TARGETS: list[IdentifierType] = [
 
 
 def stamp_summary(result: Asset) -> None:
-    """Sync: runs in the executor."""
-    result.summary = (
-        f"Reviewed: {result.get('title') or 'untitled'}"
-    )
+    """Sync: runs in the executor. summary and title
+    live under metadata; edit them through the live dict.
+    """
+    metadata: dict = result.get("metadata")
+    title = metadata.get("title") or "untitled"
+    metadata["summary"] = f"Reviewed: {title}"
 
 
 async def ship_summary(
@@ -49,8 +51,9 @@ async def ship_summary(
     mutation.
     """
     await asyncio.sleep(0)
+    metadata: dict = result.get("metadata")
     print(
-        f"{result.get('path')} -> {result.get('summary')}"
+        f"{result.get('path')} -> {metadata.get('summary')}"
     )
 
 

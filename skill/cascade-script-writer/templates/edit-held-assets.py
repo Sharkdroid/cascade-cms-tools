@@ -66,7 +66,9 @@ def main() -> None:
 
         # Submit 2: one edit() per held asset.
         for asset in held:
-            asset.displayName = "Annual Report 2025"
+            # metadata fields: edit via the live dict.
+            metadata: dict = asset.get("metadata")
+            metadata["displayName"] = "Annual Report 2025"
             cascade.operations.edit(asset)
         results = cascade.submit_requests(CascadeSuccess)
 

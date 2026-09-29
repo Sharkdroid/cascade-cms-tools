@@ -50,10 +50,13 @@ def risky_transform(result: Asset) -> None:
     try:
         # Anything that can throw on unexpected data — a
         # missing field, a bad parse, an external call.
-        title = result.get("title")
-        if title is None:
+        # title lives under metadata: edit it through
+        # the live dict.
+        metadata: dict = result.get("metadata")
+        title = metadata.get("title")
+        if not title:
             raise ValueError("asset has no title")
-        result.title = title.strip()
+        metadata["title"] = title.strip()
     except Exception as exc:
         # Catch locally: uncaught, this would stop the
         # chain and be raised at exit.
