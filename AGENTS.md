@@ -96,12 +96,20 @@ confirms it. The MCP is read-only; the live check never writes.
 
 ## Cascade API quirks — be cautious
 
-- **Do not trust Cascade's response fields blindly.** With a page region's
-  `blockId`/`blockPath` and `formatId`/`formatPath` removed, Cascade still
-  returned `noBlock: false` and `noFormat: false`. Derive "has a
-  block/format" from the ids/paths, not the flags, and verify surprising
-  state live (`cascade_get_page_config`, `cascade_read_asset`) before
-  writing a script that depends on it.
+- **`noBlock`/`noFormat` are override checkboxes, not "nothing
+  assigned" flags** (Keith, confirmed in the Cascade UI). They are
+  independent of assignment: a region can have `blockId`/`blockPath` and
+  `noBlock: true` at once, and `false` with no block at all. "Has a
+  block/format" means the ids/paths exist; "override on" means the flag.
+  Never infer one from the other.
+- **Region order is not stable.** A page's `pageRegions` array reordered
+  (and a region's `id` changed) after a save. Match regions by `name`,
+  never by index.
+- **Live reads outrank the library and the docs.** Cascade fails
+  silently and is thinly documented, so treat a read as true and confirm
+  any write with a further read. If a read genuinely conflicts with
+  another source and you cannot explain it, tell the user and let them
+  check in the Cascade UI.
 - **Page regions and configurations are read-only** in `cascade-cms-rest`
   >= 3.7.0 (`PageRegion`/`PageConfiguration` raise
   `ReadOnlyPageConfigError` on assignment; `.content` is gone). Cascade

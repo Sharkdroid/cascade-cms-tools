@@ -43,6 +43,15 @@ except KeyError:
     dynamic = []
 ```
 
+**Optional keys are missing, not null.** A key Cascade has nothing for
+is absent from the payload, e.g. `lastPublishedDate` on a page that was
+never published. There is no `published` key on a page; use
+`shouldBePublished` (bool) with `lastPublishedDate` and
+`lastModifiedDate`. Read optional keys through a `KeyError` guard. Page
+timestamps are ISO 8601 UTC with milliseconds and a `Z`
+(`2025-01-31T14:02:11.000Z`): parse them with
+`datetime.fromisoformat` before comparing, never compare the strings.
+
 **Never `asset["displayName"] = value`.** `Asset` defines `__setattr__` and
 `.get()`, and no `__setitem__` at all, so subscript assignment raises:
 
@@ -74,13 +83,15 @@ asset's definition owns (live-verified):
 - Page configurations and regions are read-only on a page.
 - A dynamic metadata field's `name` (`metadata.dynamicFields[]`) is
   defined by the metadata set. Edit its `fieldValues` only; renaming or
-  adding a field is a change to the metadata set asset. Confirm the
-  `fieldValues` shape with `cascade_query_asset` before writing:
+  adding a field is a change to the metadata set asset. Each entry is
+  `{"name": <str>, "fieldValues": [{"value": <str>}, ...]}`
+  (live-verified); there is no `value` key on the entry itself:
 
 ```python
 metadata = asset.get("metadata")               # live dict
-# find the dynamicFields entry whose name matches, in a loop
-field["fieldValues"] = ...
+for field in metadata.get("dynamicFields") or []:
+    if field.get("name") == "audience":
+        field["fieldValues"] = [{"value": "students"}]
 ```
 
 ## Type changes are rejected
@@ -142,9 +153,13 @@ Both return `None` when nothing matches — always guard before using the result
 raises `ReadOnlyPageConfigError`; there is no `.content`. Cascade ignores
 region edits sent with a page's `edit()`, so change regions on the `template`
 asset (`pageRegions`) and configurations on the `pageConfigurationSet` asset
-(`pageConfiguration`). **Do not trust Cascade's `noBlock`/`noFormat` flags** —
-they have been `false` with no `blockId`/`blockPath`/`formatId`/`formatPath`.
-Decide from the ids/paths and verify against the live server.
+(`pageConfiguration`). **`noBlock`/`noFormat` are override checkboxes** (the UI's "no block" /
+"no format"), independent of assignment: a region can have a
+`blockId`/`blockPath` and `noBlock: true`, or `false` with no block. Read
+"has a block/format" from `blockId`/`blockPath`/`formatId`/`formatPath`,
+"override on" from the flag, and never infer one from the other. Region
+order changes on save (and a region's `id` can change), so match regions
+by `name`, never by index.
 
 The library does not block `asset.structuredData = {...}` (a dict replaces a
 dict silently). The validator does: it is an ERROR. Never assign, print or

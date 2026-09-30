@@ -5,8 +5,9 @@ get_page_configuration(name) returns a PageConfiguration;
 passing a region name too returns that single PageRegion.
 Both are READ-ONLY snapshots (assignment raises
 ReadOnlyPageConfigError; regions are edited on the template
-asset). Do not trust Cascade's noBlock/noFormat flags: this
-template checks block_id/block_path instead.
+asset). noBlock/noFormat are override checkboxes, not
+"nothing assigned" flags: this template reads block_id
+and block_path to see what is assigned.
 """
 
 import os

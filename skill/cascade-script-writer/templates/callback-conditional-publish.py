@@ -5,11 +5,22 @@ A callback runs AFTER its batch has finished, so anything it
 queues would sit unsent. Collect during the first pass,
 queue and submit in a second — one submit_requests() call
 per batch.
+
+A page is stale when shouldBePublished is true and it was
+never published or changed since its last publish. Live
+Cascade has no "published" key. lastPublishedDate is
+MISSING on a never-published page (not null), and
+Asset.get raises KeyError on a missing key, so every
+optional read goes through optional_field(). Dates are
+ISO 8601 UTC with milliseconds and a Z; datetime.
+fromisoformat parses them. A date that fails to parse
+raises: it is never guessed.
 """
 
 import os
 import threading
 import uuid
+from datetime import datetime
 
 from cascade_cms.cmstypes import (
     Asset,
@@ -50,20 +61,41 @@ _lock: threading.Lock = threading.Lock()
 to_publish: list[IdentifierType] = []
 
 
+def optional_field(asset: Asset, key: str) -> object:
+    """Return asset[key], or None when the key is absent."""
+    try:
+        return asset.get(key)
+    except KeyError:
+        return None
+
+
+def is_stale(asset: Asset) -> bool:
+    if not optional_field(asset, "shouldBePublished"):
+        return False
+    published = optional_field(asset, "lastPublishedDate")
+    if published is None:
+        return True  # never published
+    modified = optional_field(asset, "lastModifiedDate")
+    if modified is None:
+        return False
+    return datetime.fromisoformat(
+        str(modified)
+    ) > datetime.fromisoformat(str(published))
+
+
 def select_stale(result: Asset) -> None:
-    if result.get("shouldBePublished") and not result.get(
-        "published"
-    ):
-        asset_id = result.get("id")
-        if not asset_id:
-            return
-        with _lock:
-            to_publish.append(
-                IdentifierType(
-                    id=uuid.UUID(asset_id),
-                    type=TARGET_TYPE,
-                )
+    if not is_stale(result):
+        return
+    asset_id = optional_field(result, "id")
+    if not asset_id:
+        return
+    with _lock:
+        to_publish.append(
+            IdentifierType(
+                id=uuid.UUID(str(asset_id)),
+                type=TARGET_TYPE,
             )
+        )
 
 
 def main() -> None:

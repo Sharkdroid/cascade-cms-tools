@@ -102,13 +102,16 @@ definition, and a page cannot change them (live-verified):
 - A dynamic metadata field's `name` (`metadata.dynamicFields[]`) is
   defined by the metadata set and cannot be changed through the page.
   Edit its `fieldValues` only. Renaming or adding a field is a change to
-  the metadata set asset. Edit `fieldValues` through the live dict,
-  like other metadata (confirm the shape with `cascade_query_asset`):
+  the metadata set asset. Each entry is `{"name": <str>, "fieldValues":
+  [{"value": <str>}, ...]}` (live-verified); there is no `value` key on
+  the entry itself. Edit `fieldValues` through the live dict, like other
+  metadata:
 
 ```python
 metadata = asset.get("metadata")
-# find the dynamicFields entry whose name matches, in a loop
-field["fieldValues"] = ...
+for field in metadata.get("dynamicFields") or []:
+    if field.get("name") == "audience":
+        field["fieldValues"] = [{"value": "students"}]
 ```
 
 After the first write stage (Step 6e), read the written fields back with
@@ -411,8 +414,10 @@ when any segment is missing — there is no default argument, so guard with
 are live references you can edit in place; page configurations and regions
 are READ-ONLY snapshots (3.7.0+) — Cascade ignores region edits on `edit()`,
 so edit the `template` asset's `pageRegions` (or the `pageConfigurationSet`
-asset) instead. Do not trust `noBlock`/`noFormat`: check
-`block_id`/`block_path`/`format_id`/`format_path`. Assigning `structuredData` is a
+asset) instead. `noBlock`/`noFormat` are override
+checkboxes, independent of assignment: check
+`block_id`/`block_path`/`format_id`/`format_path` for "has a block or
+format", and match regions by `name` (their order changes on save). Assigning `structuredData` is a
 validator ERROR, and reading `._data["structuredData"]` is a warning.
 
 **UUIDs serialize as bare hex.** Cascade rejects dashed UUIDs, so
@@ -543,10 +548,11 @@ with that identifier is matched, nested ones included. If the count
 differs, stop and ask.
 
 Change only what you have confirmed. Confirm the node's live shape first
-(MCP, or a read-only preview stage). Text fields take the new value in
-`node["text"]`. For chooser, checkbox, multi-select or any other node
-kind, never guess the encoding: confirm that node's live shape and change
-only the fields you verified.
+(MCP, or a read-only preview stage). Text fields and radio buttons
+(live-verified) keep their value in `node["text"]`. Chooser, checkbox and
+multi-select nodes are unverified: confirm that node's live shape before
+writing, never guess the encoding, and change only the fields you
+verified.
 
 Live data showed three details to respect:
 
