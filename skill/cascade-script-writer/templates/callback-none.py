@@ -49,7 +49,9 @@ def main() -> None:
         # failures are reported by the wrapper at exit.
         for result in results.success:
             path = result.get("path")
-            title = result.get("title")
+            # title lives under metadata.
+            metadata: dict = result.get("metadata")
+            title = metadata.get("title")
             print(f"{path} — {title}")
 
 

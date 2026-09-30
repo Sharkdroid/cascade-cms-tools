@@ -57,6 +57,50 @@ a field name. For `Asset` reads/writes, read `references/asset_api.md`. When
 the schema is not detailed enough, read the bundled source in `cascade_cms/`;
 it is ground truth.
 
+**Then confirm, live, where every written field goes.** The bundled source
+is ground truth for the *library*. Live Cascade data is ground truth for
+the *asset*. Before a script writes any field, whether through an `edit`
+callable, `edit(asset)`, a `NewAsset(...)` keyword, or a structured-data
+node, confirm the field's resolved path on real data with the Cascade MCP
+server. Never place a field by its name, a template, these docs or memory.
+Cascade silently ignores fields it does not recognise: the write reports
+success and nothing changes. A misplaced or invented field is a ghost field
+that no log, validator or result type will catch.
+
+- **Edit:** run `cascade_query_asset(target, 'find("<field>")')` on one of
+  the script's actual targets.
+- **Create:** use `cascade_search` to find an existing asset of the same
+  type in the target site, from the same folder or content type if
+  possible. Then run `find("<field>")` on it.
+- **Structured data and page configurations:** use
+  `cascade_get_data_structure` / `cascade_get_page_config` (see "Editing
+  structured-data nodes").
+
+Write the field at exactly the path returned:
+
+| Resolved path | In an edit callable | In `NewAsset(...)` |
+|---|---|---|
+| `$.name` | `asset.name = ...` | `name=...` |
+| `$.metadata.title` | `asset.get("metadata")["title"] = ...` | `metadata={"title": ...}` |
+
+- No match means the field does not exist on that asset. Do not write it;
+  ask the user.
+- Matches at more than one path: ask which one is meant.
+- Read shapes and paths only (`format="concise"`), never content you do not
+  need.
+- List each written field with its verified path when you present the
+  script (Step 7).
+
+After the first write stage (Step 6e), read the written fields back with
+`cascade_query_asset` and confirm the new values are there. A success
+result does not prove the field landed. The MCP is read-only; this never
+writes.
+
+Without the MCP connected, say so. Ask the user for one real asset's keys
+and paths (values redacted), or add a read-only first stage that notes the
+resolved paths. Mark every written field UNVERIFIED in Step 7 until one of
+those confirms it.
+
 **Step 4 — Edit the script** for the specific task. Keep the template's
 structure: config block, `main()`, `with CascadeWrapperBase(...)`, one
 `submit_requests()` per batch. Keep every function, parameter and module-level
@@ -133,7 +177,8 @@ h. Only then deliver the full script (Step 7) and say which stages
    passed.
 
 **Step 7 — Present** the script with a one-line note on what it does and which
-environment variables it needs. If the script has runtime-dynamic values the
+environment variables it needs. For scripts that write, list each written
+field with its live-verified path, or mark it UNVERIFIED (Step 3). If the script has runtime-dynamic values the
 validator cannot check statically (CSV rows, search results), say so rather
 than implying full coverage.
 
@@ -143,6 +188,9 @@ than implying full coverage.
 [ ] Asked the user how env vars/config are supplied (Step 1)
 [ ] Template chosen from templates/INDEX.md
 [ ] Field names/aliases confirmed in references/operations_schema.json
+[ ] Every field an edit/create writes placed at its live-resolved path
+    (MCP find(); UNVERIFIED if no MCP); no ghost fields (Step 3)
+[ ] First write stage read back via the MCP to confirm the value landed
 [ ] Only CascadeWrapperBase used — no driver, no event loop, no ClientSession
 [ ] Asset writes use attribute assignment, not asset["x"] = ...
 [ ] Path built as Path(site_name=..., asset_type=...), not a dict
@@ -311,13 +359,26 @@ Both result types are strict (`cascade-cms-rest` 3.1.6+):
 **`Asset` is written by attribute, not subscript.**
 
 ```python
-asset.get("keywords")        # read
-asset.keywords = "a, b"      # write
-asset["keywords"] = "a, b"   # TypeError: no __setitem__
+asset.get("name")            # read
+asset.name = "new-name"      # write
+asset["name"] = "new-name"   # TypeError: no __setitem__
 ```
 
 `Asset.__setattr__` also rejects a type change on an existing field
 (`str` → `int` raises). Details in `references/asset_api.md`.
+
+Attribute assignment only reaches **top-level** fields. Nested fields such
+as `metadata` (where `displayName`, `title`, `summary`, `teaser` and
+`keywords` live) are edited through the live reference —
+`asset.displayName = ...` would add a stray top-level key, which Cascade
+silently ignores — the edit reports success and `metadata.displayName` is
+unchanged:
+
+```python
+metadata = asset.get("metadata")          # live dict
+metadata["displayName"] = "Annual Report"
+keywords = metadata.get("keywords") or ""  # dict.get: no KeyError
+```
 
 **`Asset.get()` takes dotted paths (3.1.6+).** `asset.get("a.b.c")` walks
 nested dicts (max depth 5; deeper raises `ValueError`) and raises `KeyError`
@@ -501,7 +562,7 @@ names and shapes before you write them into a script:
   and compare. The MCP has no write tools.
 
 Without the MCP, ask the user for the identifiers and the expected count,
-and say the node shape is unverified. The skill works either way.
+and say the node shape is unverified (Step 3).
 
 Stage the write (Step 6). The preview stage notes the asset id, the group
 and field, and the match count, never the values. After the first write,
@@ -627,7 +688,9 @@ payloads: list[NewAsset] = [
         # of parent_folder_path/parent_folder_id.
         site_name="www",
         parent_folder_path=row["folder"],
-        title=row["title"],  # extra fields pass through
+        # Extra fields pass through at the path given.
+        # title lives under metadata (confirmed live).
+        metadata={"title": row["title"]},
     )
     for row in rows
 ]
@@ -656,10 +719,11 @@ with CascadeWrapperBase(
         Asset
     ).success
     for asset in editable:
-        # Attribute assignment, never asset[...] = ...
-        asset.displayName = "Annual Report 2025"
-        keywords: str = asset.get("keywords") or ""
-        asset.keywords = keywords.strip().lower()
+        # metadata fields: edit via the live dict.
+        metadata: dict = asset.get("metadata")
+        metadata["displayName"] = "Annual Report 2025"
+        keywords = str(metadata.get("keywords") or "")
+        metadata["keywords"] = keywords.strip().lower()
         # One edit() per asset: one chain each.
         cascade.operations.edit(asset)
 

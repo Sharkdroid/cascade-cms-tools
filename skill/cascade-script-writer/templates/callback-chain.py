@@ -40,18 +40,24 @@ def log_read(result: Asset) -> None:
 def normalize_keywords(
     result: Asset,
 ) -> None:
-    raw = result.get("keywords") or ""
+    # keywords lives under metadata: edit it through
+    # the live dict. dict.get, since Asset.get has no
+    # default and raises KeyError on a missing key.
+    metadata: dict = result.get("metadata")
+    raw = str(metadata.get("keywords") or "")
     cleaned = ", ".join(
         k.strip().lower()
         for k in raw.split(",")
         if k.strip()
     )
-    # Attribute assignment — Asset has no __setitem__.
-    result.keywords = cleaned
+    metadata["keywords"] = cleaned
 
 
 def report(result: Asset) -> None:
-    print(f"{result.get('path')}: {result.get('keywords')}")
+    metadata: dict = result.get("metadata")
+    print(
+        f"{result.get('path')}: {metadata.get('keywords')}"
+    )
 
 
 def main() -> None:

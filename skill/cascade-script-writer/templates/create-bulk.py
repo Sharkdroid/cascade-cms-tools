@@ -58,9 +58,11 @@ def build_payloads(
                     # parent_folder_id.
                     site_name=SITE_NAME,
                     parent_folder_path=row["folder"],
-                    # extra="allow": type-specific fields
-                    # pass straight through.
-                    title=row["title"],
+                    # extra="allow": extra fields pass
+                    # through at the path given. Confirm
+                    # each one live (SKILL.md Step 3):
+                    # title lives under metadata.
+                    metadata={"title": row["title"]},
                 )
             )
         except (KeyError, ValueError) as err:

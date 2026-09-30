@@ -76,15 +76,23 @@ Four rules the validator enforces and scripts must never break:
 
 ## Cross-checking schema with the MCP server
 
-When the `cascade-cms-rest-mcp` server (`mcp/`) is connected, prefer its
-`cascade_get_data_structure` / `cascade_get_page_config` tools to confirm
-valid field/group/configuration names before writing a script that
-references them by name, rather than guessing from
-`Asset.get_data_structure()`'s instance-sampling result. See
-`references/asset_api.md` in the skill and `mcp/README.md` for the
-distinction between the two same-named-but-different `get_data_structure`s.
-The skill remains fully usable without the MCP server connected — this is a
-preference, not a dependency.
+When the `cascade-cms-rest-mcp` server (`mcp/`) is connected, live data is
+the source of truth for where a script writes. Every field that an `edit`
+or `create` writes must be placed at the path the MCP resolves on a real
+asset: `cascade_query_asset(..., 'find("<field>")')`, or
+`cascade_get_data_structure` / `cascade_get_page_config` for structured
+data and page configurations. Never place a field by its name or from docs.
+Cascade silently ignores a misplaced field (the write succeeds and nothing
+changes), so a guessed field is a ghost field no check will catch. The
+skill's `SKILL.md` Step 3 has the full rule, including the read-back after
+the first write stage. See `references/asset_api.md` in the skill and
+`mcp/README.md` for the distinction between the two
+same-named-but-different `get_data_structure`s.
+
+The skill still runs without the MCP server connected. It then asks the
+user for one real asset's keys and paths, or adds a read-only stage that
+notes them, and marks every written field UNVERIFIED until one of those
+confirms it. The MCP is read-only; the live check never writes.
 
 ## Cascade API quirks — be cautious
 

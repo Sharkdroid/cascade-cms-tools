@@ -206,7 +206,7 @@
         "exactly one of site_name or site_id (siteName / siteId also accepted)",
         "exactly one of parent_folder_path or parent_folder_id (parentFolderPath / parentFolderId also accepted)"
       ],
-      "extra": "allow — asset-type-specific fields (title, xhtml, metadata...) pass straight through",
+      "extra": "allow — extra fields pass through at the path given, so nest them where Cascade expects them (e.g. metadata={\"title\": ...}, not title=...). Cascade silently ignores a misplaced field; confirm each path live (SKILL.md Step 3)",
       "serialization": "{\"asset\": {\"<asset_type>\": {...}}}; site_id/parent_folder_id emit bare hex; None values are dropped",
       "error_if_violated": "ValueError('Provide exactly one of site_name or site_id') / ('Provide exactly one of parent_folder_path or parent_folder_id')"
     },

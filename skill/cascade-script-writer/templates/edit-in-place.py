@@ -2,12 +2,20 @@
 """Read assets, modify fields on the returned Asset objects,
 then save them.
 
-Asset writes are ATTRIBUTE assignment (`asset.displayName =
-...`), never subscript assignment. `Asset` defines
-`__setattr__` and `.get()` but no `__setitem__`, so
-`asset["displayName"] = ...` raises TypeError. It also
-rejects a type change on an existing field: if `name` is
-currently a str, assigning an int raises TypeError.
+Top-level fields are written by ATTRIBUTE (`asset.name =
+...`), never by subscript. `Asset` defines `__setattr__`
+and `.get()` but no `__setitem__`, so `asset["name"] =
+...` raises TypeError. It also rejects a type change on an
+existing field: if `name` is a str, assigning an int
+raises TypeError.
+
+Nested fields are edited through the live reference.
+displayName, title, summary, teaser and keywords live
+under `metadata`; `asset.displayName = ...` would add a
+stray top-level key that Cascade silently ignores: the
+edit succeeds and nothing changes. Read
+optional keys with dict.get: `Asset.get` has no default
+and raises KeyError on a missing key.
 
 This is the preferred edit shape. One chain per target:
 `read(identifier).edit(apply_edits)` reads the asset, then
@@ -53,10 +61,13 @@ TARGETS: list[IdentifierType] = [
 
 
 def apply_edits(asset: Asset) -> Asset:
-    asset.displayName = "Annual Report 2025"
-    asset.teaser = "Overview of the year's performance."
-    asset.keywords = (
-        (asset.get("keywords") or "").strip().lower()
+    metadata: dict = asset.get("metadata")
+    metadata["displayName"] = "Annual Report 2025"
+    metadata["teaser"] = (
+        "Overview of the year's performance."
+    )
+    metadata["keywords"] = (
+        str(metadata.get("keywords") or "").strip().lower()
     )
     return asset
 
@@ -72,7 +83,14 @@ def main() -> None:
 
         results = cascade.submit_requests(CascadeSuccess)
 
-        print(f"Saved {len(results.success)}.")
+        for failure in results.failed:
+            print(
+                f"edit failed: {failure.identifier}: "
+                f"{failure.message}"
+            )
+        print(
+            f"Saved {len(results.success)}/{len(TARGETS)}."
+        )
 
 
 if __name__ == "__main__":

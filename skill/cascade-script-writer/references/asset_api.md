@@ -8,9 +8,9 @@ asset type. Nothing about its fields is schema-validated.
 ## Read and write
 
 ```python
-asset.get("displayName")          # read  — .get(), no default arg
+asset.get("name")                 # read  — .get(), no default arg
 asset.get("metadata.summary")     # read  — dotted path, depth <= 5
-asset.displayName = "New Title"   # write — ATTRIBUTE assignment
+asset.name = "new-name"           # write — ATTRIBUTE assignment
 asset.asset_type                  # "page", "file", "folder", ...
 ```
 
@@ -48,9 +48,19 @@ asset["keywords"] = "x"
 Reading with `asset["keywords"]` fails the same way — there is no
 `__getitem__` either. Use `.get()`.
 
-Writes are single-level: `asset.displayName = ...` sets a top-level field.
-To change a nested value, `get()` the container (it is a live reference) and
-mutate it, or use the designated accessors.
+Writes are single-level: `asset.name = ...` sets a top-level field.
+Nested fields such as `metadata` are edited through the live reference:
+`get()` the container and mutate it, or use the designated accessors.
+`displayName`, `title`, `summary`, `teaser` and `keywords` live under
+`metadata` — `asset.displayName = ...` adds a stray top-level key, which
+Cascade silently ignores: the edit reports success and
+`metadata.displayName` is unchanged:
+
+```python
+metadata = asset.get("metadata")               # live dict
+metadata["displayName"] = "New Title"
+keywords = metadata.get("keywords") or ""       # dict.get: no KeyError
+```
 
 ## Type changes are rejected
 
