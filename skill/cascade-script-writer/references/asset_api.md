@@ -77,6 +77,47 @@ metadata["displayName"] = "New Title"
 keywords = metadata.get("keywords") or ""       # dict.get: no KeyError
 ```
 
+**A stored value is not a shown value.** REST does not enforce the
+editor's required fields or show/hide rules. A structured-data field can
+persist and still not render because a sibling radio button (its
+`radio-item` has `show-fields` naming the field; `required`/`default`
+appear on the field's schema node) is at its default. Live case: image
+chooser set, `display-impact` still `No`, no image shown. See SKILL.md,
+"What the library actually does" ("A successful write can change
+nothing the user sees").
+
+**Structure lives in the source (Keith, tested live).** Cascade
+reconciles a page's structured data against its data definition: nodes
+the schema lacks are ignored, removed nodes take the field default where
+there is one, and a value that is not a valid choice is still stored.
+A page edit changes values and repeatable-group instances, not the
+nodes: moving a node to another group, renaming its identifier, and
+removing or creating a node all go through the definition asset. The
+same applies to page configurations/regions (template,
+pageConfigurationSet) and dynamic metadata fields (metadata set). Add, remove,
+move or rename fields, groups, radio items and defaults on the data
+definition; regions/configurations on the template or
+pageConfigurationSet; dynamic fields on the metadata set. A source
+change does not update existing pages: each keeps its stored data (a REST
+read can differ from the editor) until it is saved again, by the UI or
+`edit()`.
+
+**Special text nodes.** Multi-select is one text node,
+`::CONTENT-XML-SELECTOR::` before each chosen option; bare marker =
+empty/default; an unlisted option stays stored but the editor shows it
+deselected. Checkbox follows the same pattern with
+`::CONTENT-XML-CHECKBOX::` (production script; not live-tested here).
+Calendar is `MM-DD-YYYY`, unvalidated (a garbage string crashed the date
+picker). A `datetime` node is epoch MILLISECONDS; asset dates
+(`lastModifiedDate` etc.) are ISO 8601 UTC. Never mix the two.
+
+**Chooser nodes.** Empty: `{type, identifier, assetType, recycled}`.
+Filled: plus `<kind>Id`/`<kind>Path` (`fileId`/`filePath`; a multi-type
+chooser keeps `assetType` as the allowed list and uses the chosen
+type's prefix). Send one key and Cascade stores both; if a pair names
+two assets, the id wins. Delete the keys to clear (`None`/`""` end up absent too).
+Only file choosers are verified.
+
 **Definition-owned fields.** A page cannot change fields that another
 asset's definition owns (live-verified):
 

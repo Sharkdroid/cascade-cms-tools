@@ -110,6 +110,32 @@ confirms it. The MCP is read-only; the live check never writes.
   any write with a further read. If a read genuinely conflicts with
   another source and you cannot explain it, tell the user and let them
   check in the Cascade UI.
+- **A stored value is not a shown value.** REST skips the editor's
+  required-field and show/hide rules (Keith, live): a script set an
+  image and it persisted, but `display-impact` (radio, required,
+  default `No`, `show-fields` on its `Yes` item) stayed `No`, so the
+  page showed nothing. Check gate radios and required siblings in the
+  schema, and tell the user to check the rendered page.
+- **Structure is edited at its source, never on the page** (Keith,
+  tested live). Cascade reconciles a page's structured data with its
+  data definition: unknown nodes are ignored, removed nodes take the
+  default, an invalid choice is still stored. Page edits change values
+  and repeatable-group instances, not nodes: no moving a node to
+  another group, renaming an identifier, or removing/creating a node.
+  Those go through the definition asset. The same holds for
+  configurations/regions and dynamic metadata fields: the page holds
+  values, the source asset holds structure. Fields/groups/radio items/defaults belong to the data
+  definition, regions to the template, configurations to the
+  `pageConfigurationSet`, dynamic fields to the metadata set. A source
+  change does not update existing pages; each needs a re-save (UI or
+  `edit()`) before it reads and renders correctly.
+- **Special text nodes are unvalidated strings** (Keith, live).
+  Multi-select: `::CONTENT-XML-SELECTOR::` before each option, bare
+  marker = empty; an unlisted option is stored but shows deselected.
+  Calendar: `MM-DD-YYYY`; garbage is stored and crashes the date
+  picker. `datetime` nodes: epoch MILLISECONDS, never the ISO 8601
+  used by asset dates like `lastModifiedDate`. Check format and options
+  against the schema before writing.
 - **Page regions and configurations are read-only** in `cascade-cms-rest`
   >= 3.7.0 (`PageRegion`/`PageConfiguration` raise
   `ReadOnlyPageConfigError` on assignment; `.content` is gone). Cascade

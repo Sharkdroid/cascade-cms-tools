@@ -114,6 +114,42 @@ for field in metadata.get("dynamicFields") or []:
         field["fieldValues"] = [{"value": "students"}]
 ```
 
+- A page's structured data follows its data definition (Keith, tested
+  live). Cascade reconciles the page against that schema: a node the
+  schema does not have is ignored, and a removed node takes the field's
+  `default` where one exists. A value that is not a valid choice is
+  still stored (see the radio-button rule under "What the library
+  actually does"). So a page edit changes values and the instances of
+repeatable (`multiple`) groups, never the nodes themselves. A node
+cannot be moved to another group, renamed (its `identifier`), removed or
+created on a page; all of that goes through the definition asset. The
+same holds for page configurations and regions (source: the template
+and `pageConfigurationSet`) and dynamic metadata fields (source: the
+metadata set): a page carries their values, and moving, renaming,
+adding or removing one is a change to the source asset.
+Adding and removing instances of a repeatable group is used in
+production (a script that replaces the whole set of instances); we have
+not live-tested it ourselves.
+
+Schema structure is edited at its source, never on the page. Adding, removing,
+moving or renaming a field, group, radio item or default is a change to
+the data definition; regions and configurations belong to the template
+and `pageConfigurationSet`; a dynamic metadata field belongs to the
+metadata set. Moving, renaming, adding or deleting a node on a page is
+not a fix: Cascade drops or resets it. When a task needs a structural change, say which
+source asset owns it and plan the script against that asset. A data
+definition is shared by every page whose content type uses it, so state
+the blast radius, use a DEV asset first, and read the definition back
+afterwards.
+
+Changing a source does not update the pages that use it (Keith, live).
+After a structural change to a data definition, page configuration set
+or metadata set, an existing page keeps its old stored data: the editor
+can show the new default while a REST read still returns the previous
+value, and the page renders correctly only after it is saved again (a
+UI save, or `edit()` on the page). Plan a separate, reviewed stage that
+re-saves each affected page, then confirm one in the Cascade UI.
+
 After the first write stage (Step 6e), read the written fields back with
 `cascade_query_asset` and confirm the new values are there. A success
 result does not prove the field landed. The MCP is read-only; this never
@@ -214,6 +250,8 @@ than implying full coverage.
 [ ] Every field an edit/create writes placed at its live-resolved path
     (MCP find(); UNVERIFIED if no MCP); no ghost fields (Step 3)
 [ ] First write stage read back via the MCP to confirm the value landed
+[ ] Schema checked for gate radio buttons (show-fields) and required
+    siblings of each written field; user told to check the rendered page
 [ ] Only CascadeWrapperBase used — no driver, no event loop, no ClientSession
 [ ] Asset writes use attribute assignment, not asset["x"] = ...
 [ ] Path built as Path(site_name=..., asset_type=...), not a dict
@@ -549,23 +587,110 @@ differs, stop and ask.
 
 Change only what you have confirmed. Confirm the node's live shape first
 (MCP, or a read-only preview stage). Text fields and radio buttons
-(live-verified) keep their value in `node["text"]`. Chooser, checkbox and
-multi-select nodes are unverified: confirm that node's live shape before
+(live-verified) keep their value in `node["text"]`. Multi-select,
+checkbox, datetime and calendar nodes are also plain `type: "text"`
+nodes with a special string in `text`; see "Special text nodes" below.
+A node type not listed there is unverified: confirm its live shape before
 writing, never guess the encoding, and change only the fields you
 verified.
+
+**Special text nodes.** Cascade type-checks none of these, so a wrong
+string is stored and then breaks the editor. The schema, not the node,
+tells you the type: `cascade_get_data_structure` with `node_identifier`.
+Never type these strings by hand: start from
+`callback-structured-data-edit`, set `FIELD_KIND` (and
+`ALLOWED_OPTIONS` from the schema), and let its encoder build the value.
+It raises on an unlisted option, a str where a date belongs, or a naive
+datetime.
+
+- Multi-select (live-verified): ONE node, `text` is each chosen option
+  prefixed by `::CONTENT-XML-SELECTOR::`, e.g.
+  `::CONTENT-XML-SELECTOR::One::CONTENT-XML-SELECTOR::Two`. The bare
+  marker is the empty and default value; removing it just reverts to
+  it. An option not in the schema's list stays in the stored string and
+  the read still shows it, but the editor shows it deselected. Write
+  only listed options.
+- Checkbox (from a production script, not live-tested here): the same
+  pattern with the marker `::CONTENT-XML-CHECKBOX::`, bare marker for
+  empty. `""` does not clear it.
+- Calendar: `MM-DD-YYYY` (Keith). Not validated: a malformed string
+  such as a long run of digits is stored and displayed, and opening the
+  date picker on it crashed the browser. Check the format in the script
+  before writing.
+- Datetime: the field value is Unix epoch MILLISECONDS (Keith), not an
+  ISO string. Do not mix it up with asset dates such as
+  `lastModifiedDate`, `lastPublishedDate` and `createdDate`, which are
+  ISO 8601 UTC with milliseconds and a `Z`. Two formats, two places:
+  asset date fields are ISO; a `datetime` structured-data node is epoch
+  ms.
+- To clear a calendar or datetime field, remove the node's `text` key
+  (Keith). The node stays; only the content goes.
+
+File choosers (`type: "asset"`, live-verified on a file chooser):
+
+- Shape: `{type, identifier, assetType, recycled}` when empty. A filled
+  one adds `<kind>Id` and `<kind>Path` (`fileId`/`filePath`). For a
+  multi-type chooser `assetType` stays the allowed list
+  (`"page,file,symlink"`) and the keys take the chosen type
+  (`symlinkId`/`symlinkPath`).
+- Set: send `fileId`, `filePath` or both; Cascade stores both, resolved
+  to the same asset. If the two name different assets, the id wins
+  (Keith, tested). Send the id.
+- Clear: delete the `<kind>Id`/`<kind>Path` keys. Setting them to
+  `None` or `""` also ends with the keys absent, so use the delete.
+- Untested: block and page choosers, chooser types other than file,
+  and checkbox or multi-select. Confirm those live.
+
+Repeated and nested groups (live-verified offline on a real page):
+`get_data_structure(group, field)` returns one node per group INSTANCE
+across every parent, with no link back to the parent, and only the
+first depth-first match inside each instance. Search the innermost
+group (`column`, not `main-content`), and assert the count you expect.
+A field name that also exists in a child group (`title` in both) is
+unreachable through the parent.
 
 Live data showed three details to respect:
 
 - A node's `type` in the asset is `text` for radio buttons and other
   choosers too. The schema tells them apart: `cascade_get_data_structure`
   with `node_identifier` reports the field's `type` (null for free text,
-  `radiobutton` and so on otherwise). Edit only fields whose schema type
-  is null.
+  `radiobutton` and so on otherwise). Free-text fields (type null) are
+  the safe default. Write a radio button only with a value taken from
+  its `radio-item` list: Cascade stores any string you send (live-
+  verified) and never rejects it. A stored value that is not a
+  `radio-item` shows as `(empty)` in the editor while the read still
+  returns it, and the rendered page can disagree with that read (live:
+  stored `No`, item removed from the definition, image still shown).
+  Only a look at the rendered page settles it.
 - A text node with no value has no `text` key at all, so a script must not
   assume the key exists before it sets it.
 - The instance can hold a group that the schema lookup does not list. If
   `cascade_get_data_structure` says a group is not found, check the
   instance with `cascade_query_asset` before deciding the name is wrong.
+
+A successful write can change nothing the user sees. The REST API does
+not enforce what the Cascade editor enforces: a `required` field can
+be left blank, and a field's value is never checked against the rest of
+the group. Live case: a script set the image chooser under `impact`
+and the write persisted (a read-back showed `fileId`/`filePath`), yet
+the page showed no image, because the sibling radio button
+`display-impact` ("Display Impact Image?") was still `No` (its schema
+default) and the page's format only renders the image when it is `Yes`.
+The schema declares this link: `cascade_get_data_structure` with
+`node_identifier` shows `required` and `default` on the field, and a
+`radio-item` carrying `show-fields="<group/field>, ..."` names the
+fields that choice reveals. Before you write a field:
+
+- Read its group's schema (`cascade_get_data_structure(identifier,
+  group)`, then each radio button with `node_identifier`). List any
+  radio button whose `show-fields` names the field you write, and any
+  `required` sibling.
+- Set the gate to the value that shows the field, in the same edit, or
+  tell the user it is left as is. Never leave a required field blank
+  that the UI would have filled with its `default`.
+- In Step 7, say the user must check the rendered page or preview in
+  Cascade: a REST read-back proves the value is stored, not that it is
+  displayed. A read-back cannot see a gate that is off.
 
 A raise in the edit callable is logged as a LIBRARY failure
 (`[CASCADE-REST-CMS]`) with your message after `ValueError:`. That prefix

@@ -15,9 +15,34 @@
   (LIBRARY) with your message after "ValueError:".
   The prefix does not mean a library bug.
 - Writes are delivered in stages (SKILL.md Step 6).
-  Confirm the node's live shape first; this template
-  edits free-text fields only (schema type null, not
-  a radio button or other chooser).
+  Confirm the node's live shape first.
+
+Cascade type-checks none of these fields: a wrong
+string is stored, then breaks or misleads the editor.
+So the value is BUILT by an encoder that raises on
+anything invalid, never typed by hand. Set FIELD_KIND
+to the field's schema type (cascade_get_data_structure
+with node_identifier):
+
+- text: free text (schema type null). A str.
+- radio: a str that must be in ALLOWED_OPTIONS, the
+  schema's radio-item values.
+- multiselect: a list[str], every item in
+  ALLOWED_OPTIONS. Stored as ::CONTENT-XML-SELECTOR::
+  before each item; [] is the bare marker.
+- checkbox: like multiselect with the marker
+  ::CONTENT-XML-CHECKBOX:: (from a production script,
+  not live-tested here; read back to confirm).
+- calendar: a date, stored MM-DD-YYYY.
+- datetime: a timezone-aware datetime, stored as Unix
+  epoch MILLISECONDS. Not the ISO 8601 that asset
+  dates such as lastModifiedDate use.
+
+To clear a calendar or datetime field set NEW_VALUE to
+None: the "text" key is removed, the node stays.
+
+Chooser (asset) nodes are not covered here: see
+SKILL.md, "File choosers".
 
 get_data_structure(group, identifier) returns matching
 nodes BY REFERENCE, so setting node["text"] edits the
@@ -27,6 +52,7 @@ asset itself. One chain per target:
 
 import os
 import uuid
+from datetime import date, datetime
 
 from cascade_cms.cmstypes import (
     Asset,
@@ -55,11 +81,87 @@ TARGETS: list[IdentifierType] = [
 
 GROUP: str = "contact-block"
 FIELD: str = "phone"
-NEW_VALUE: str = "+1 555 0100"
+FIELD_KIND: str = "text"
+ALLOWED_OPTIONS: list[str] = []
+NEW_VALUE: str | list[str] | date | datetime | None = (
+    "+1 555 0100"
+)
 EXPECTED_COUNT: int = 1
+
+SELECTOR_MARKER: str = "::CONTENT-XML-SELECTOR::"
+CHECKBOX_MARKER: str = "::CONTENT-XML-CHECKBOX::"
+
+
+def encode_options(
+    marker: str, value: object, allowed: list[str]
+) -> str:
+    """Marker before every option; [] is the bare marker."""
+    if not isinstance(value, list):
+        raise ValueError("expected a list of options")
+    if not allowed:
+        raise ValueError(
+            "set ALLOWED_OPTIONS from the schema"
+        )
+    for item in value:
+        if not isinstance(item, str) or item not in allowed:
+            raise ValueError(
+                f"{item!r} is not one of the schema options"
+            )
+    if len(set(value)) != len(value):
+        raise ValueError("duplicate option")
+    return marker + marker.join(value) if value else marker
+
+
+def encode_value(
+    kind: str, value: object, allowed: list[str]
+) -> str | None:
+    """Build the exact string Cascade stores, or raise.
+
+    None (calendar and datetime only) means clear: the
+    caller removes the node's "text" key.
+    """
+    if value is None and kind in ("calendar", "datetime"):
+        return None
+    if kind == "text":
+        if not isinstance(value, str):
+            raise ValueError("text needs a str")
+        return value
+    if kind == "radio":
+        if (
+            not isinstance(value, str)
+            or value not in allowed
+        ):
+            raise ValueError(
+                f"{value!r} is not a radio-item value"
+            )
+        return value
+    if kind == "multiselect":
+        return encode_options(
+            SELECTOR_MARKER, value, allowed
+        )
+    if kind == "checkbox":
+        return encode_options(
+            CHECKBOX_MARKER, value, allowed
+        )
+    if kind == "calendar":
+        if not isinstance(value, date) or isinstance(
+            value, datetime
+        ):
+            raise ValueError("calendar needs a date")
+        return value.strftime("%m-%d-%Y")
+    if kind == "datetime":
+        if not isinstance(value, datetime):
+            raise ValueError("datetime needs a datetime")
+        if value.tzinfo is None:
+            raise ValueError("datetime must be tz-aware")
+        return str(int(value.timestamp() * 1000))
+    raise ValueError(f"unknown FIELD_KIND {kind!r}")
 
 
 def update_node(asset: Asset) -> Asset:
+    text = encode_value(
+        FIELD_KIND, NEW_VALUE, ALLOWED_OPTIONS
+    )
     nodes = asset.get_data_structure(GROUP, FIELD)
     if not nodes:
         raise ValueError(f"no {GROUP}/{FIELD} node")
@@ -70,12 +172,15 @@ def update_node(asset: Asset) -> Asset:
         )
     # Count only; never log the values.
     script_log.note(
-        f"set {GROUP}/{FIELD} on {asset.get('id')}: "
-        f"{len(nodes)} node(s)"
+        f"set {GROUP}/{FIELD} ({FIELD_KIND}) on "
+        f"{asset.get('id')}: {len(nodes)} node(s)"
     )
     for node in nodes:
         # By reference: this edits the asset in place.
-        node["text"] = NEW_VALUE
+        if text is None:
+            node.pop("text", None)
+        else:
+            node["text"] = text
     return asset
 
 
