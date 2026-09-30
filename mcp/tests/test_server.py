@@ -369,6 +369,23 @@ def test_cascade_get_data_structure_node_not_found(
     assert "widget" in message
 
 
+def test_cascade_get_data_structure_node_identifier_can_be_a_group(
+    patch_wrapper_sequence, page, content_type, data_definition
+):
+    patch_wrapper_sequence([page, content_type, data_definition])
+
+    result = server.cascade_get_data_structure(
+        identifier=_identifier(),
+        group="post_details",
+        node_identifier="homePageOptions",
+    )
+
+    node = result["node"]
+    assert node["tag"] == "group"
+    assert [c["identifier"] for c in node["children"]]
+    assert all("children" not in c for c in node["children"])
+
+
 def test_cascade_get_data_structure_truncates_with_limit_and_expand_hint(
     patch_wrapper_sequence, page, content_type, data_definition
 ):

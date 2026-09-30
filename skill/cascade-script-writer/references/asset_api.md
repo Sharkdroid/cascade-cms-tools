@@ -162,6 +162,31 @@ cascade.operations.edit(asset)          # one chain per asset
 results = cascade.submit_requests(CascadeSuccess)
 ```
 
+## Turning raw `{id, type, path}` dicts into identifiers
+
+Folder `children`, search hits and similar raw entries are dicts, not
+`IdentifierType`. Convert them with `cascade_cms.utils` (pure, no I/O;
+see `templates/read-tree.py`):
+
+```python
+from cascade_cms.utils import to_identifier, to_identifiers
+
+ids = to_identifiers(asset.get("children"))  # drops recycled
+one = to_identifier(entry)                   # never filters
+```
+
+- `to_identifiers(raw, include_recycled=False)` returns `[]` for `None`,
+  drops entries with `recycled: true` unless `include_recycled=True`, and
+  keeps order. `to_identifier` never filters by `recycled`.
+- A malformed entry raises `ValueError` (never another type): the
+  message names fields and reasons, never values, and the list form is
+  prefixed `entry <index>: `. An unknown asset type is reported as
+  "not a known asset type".
+- A `path` value must be an object with `path` and `siteName`/`siteId`,
+  not a string.
+- Both accept Cascade's keys (`id`, `type`) and the snake_case names
+  (`identifier`, `asset_type`).
+
 ## Live references
 
 Both accessors return **references into the asset**, so mutating what they

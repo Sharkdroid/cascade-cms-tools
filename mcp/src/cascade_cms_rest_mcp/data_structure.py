@@ -69,17 +69,29 @@ def find_group(tree: dict[str, Any], group_identifier: str) -> dict[str, Any] | 
 def find_node(
     group_node: dict[str, Any], node_identifier: str
 ) -> dict[str, Any] | None:
-    """DFS within a matched group's children for a leaf field (any non-`group`
-    tag) whose `identifier` matches, descending into nested `group` children
-    (never itself a match - `node_identifier` names a field, not a group)."""
+    """DFS within a matched group's children, in document order, for a field
+    OR a nested `group` whose `identifier` matches, descending into nested
+    `group` children. A nested group is a valid match because
+    `list_children` lists subgroups beside fields, so a caller can name one
+    from that listing; use `summarize_group` to present it."""
     for child in group_node.get("children", []):
-        if child.get("tag") != "group" and _identifier(child) == node_identifier:
+        if _identifier(child) == node_identifier:
             return child
         if child.get("tag") == "group":
             found = find_node(child, node_identifier)
             if found is not None:
                 return found
     return None
+
+
+def summarize_group(group_node: dict[str, Any]) -> dict[str, Any]:
+    """A group's attributes plus a compact listing of its immediate
+    children (not the whole subtree, which can be large)."""
+    summary: dict[str, Any] = {"tag": "group"}
+    if "attributes" in group_node:
+        summary["attributes"] = group_node["attributes"]
+    summary["children"] = list_children(group_node)
+    return summary
 
 
 def list_children(group_node: dict[str, Any]) -> list[dict[str, Any]]:

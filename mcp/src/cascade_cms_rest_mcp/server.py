@@ -229,7 +229,8 @@ def cascade_get_data_structure(
     this one asset instance).
 
     node_identifier omitted: lists the group's immediate fields/subgroups.
-    node_identifier given: returns that one field's full definition.
+    node_identifier given: returns that one field's full definition, or,
+    for a subgroup, its attributes and a listing of its immediate children.
 
     limit: max items returned; default 50, clamped to 1..200.
     """
@@ -294,6 +295,8 @@ def cascade_get_data_structure(
                 node_identifier,
                 context="cascade_get_data_structure",
             )
+        if node.get("tag") == "group":
+            node = data_structure.summarize_group(node)
         return {"group": group, "data_definition": meta, "node": node}
     except ToolError:
         raise

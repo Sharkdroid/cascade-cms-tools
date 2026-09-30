@@ -7,6 +7,7 @@ from cascade_cms_rest_mcp.data_structure import (
     find_group,
     find_node,
     list_children,
+    summarize_group,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -114,3 +115,32 @@ def test_find_node_descends_into_nested_groups():
     assert node is not None
     assert node["tag"] == "asset"
     assert node["attributes"]["restrict-to-folder"] == "/_files/images/homepage"
+
+
+def test_find_node_matches_a_nested_group():
+    # list_children shows "homePageOptions" beside the fields, so naming it
+    # as node_identifier must resolve it instead of "not found".
+    tree = build_tree(_real_xml())
+    post_details = find_group(tree, "post_details")
+    node = find_node(post_details, "homePageOptions")
+    assert node is not None
+    assert node["tag"] == "group"
+
+
+def test_find_node_group_and_leaf_share_document_order():
+    tree = build_tree(_real_xml())
+    post_details = find_group(tree, "post_details")
+    # Every identifier list_children offers resolves to something.
+    for entry in list_children(post_details):
+        assert find_node(post_details, entry["identifier"]) is not None
+
+
+def test_summarize_group_lists_children_not_subtree():
+    tree = build_tree(_real_xml())
+    post_details = find_group(tree, "post_details")
+    summary = summarize_group(find_node(post_details, "homePageOptions"))
+    assert summary["tag"] == "group"
+    assert summary["children"] == list_children(
+        find_node(post_details, "homePageOptions")
+    )
+    assert all("children" not in c for c in summary["children"])

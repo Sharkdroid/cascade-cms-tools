@@ -138,10 +138,9 @@ if results["results"]:
             groups = cascade_get_data_structure(identifier=identifier, group=group_name)
             print(groups)
             # list_children mixes group and leaf entries in one flat listing;
-            # find_node only ever resolves a leaf (tag != "group") - a group
-            # entry needs its own top-level group=<identifier> call instead
-            # (find_group searches the whole tree, not just this group's
-            # children, so no path is needed).
+            # find_node resolves either (a subgroup returns a summary of its
+            # children). A group's own fields can also be listed with a
+            # top-level group=<identifier> call.
             leaf = next(
                 (c for c in groups["children"] if c["tag"] != "group"), None
             )
