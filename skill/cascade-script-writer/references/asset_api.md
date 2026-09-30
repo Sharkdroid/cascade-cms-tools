@@ -165,9 +165,7 @@ results = cascade.submit_requests(CascadeSuccess)
 ## Turning raw `{id, type, path}` dicts into identifiers
 
 Folder `children` and any other raw `{id, type, path}` dicts are not
-`IdentifierType`. (`search()` results are different: they arrive as
-`ListElements` whose entries are already `IdentifierType`; use them as
-they are and do not pass them to `to_identifiers`.) Convert them with `cascade_cms.utils` (pure, no I/O;
+`IdentifierType`. Convert them with `cascade_cms.utils` (pure, no I/O;
 see `templates/read-tree.py`):
 
 ```python
@@ -186,6 +184,9 @@ one = to_identifier(entry)                   # never filters
   "not a known asset type".
 - A `path` value must be an object with `path` and `siteName`/`siteId`,
   not a string.
+- `search()` results are not raw dicts: they arrive as
+  `ListElements` whose entries are already `IdentifierType`. Use them
+  as they are; do not pass them to `to_identifiers`.
 - Both accept Cascade's keys (`id`, `type`) and the snake_case names
   (`identifier`, `asset_type`).
 
