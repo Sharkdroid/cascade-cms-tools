@@ -13,6 +13,7 @@ import uuid
 
 from cascade_cms.cmstypes import (
     Asset,
+    AssetTypes,
     CascadeSuccess,
     IdentifierType,
     publishInformation,
@@ -29,10 +30,15 @@ environment_variables: EnvironmentVars = {
     "SERVER": os.environ.get("SERVER", "default"),
 }
 
+# The type this script reads and publishes. Build every
+# identifier from it: internal_type is a response key, not
+# a request type, and is rejected for some assets.
+TARGET_TYPE: AssetTypes = "page"
+
 TARGETS: list[IdentifierType] = [
     IdentifierType(
         id=uuid.UUID("e868f539ac1001062cfa029c4c5df4d0"),
-        type="page",
+        type=TARGET_TYPE,
     ),
 ]
 
@@ -47,7 +53,7 @@ def collect_published(result: Asset) -> None:
             ready_to_publish.append(
                 IdentifierType(
                     id=uuid.UUID(result.get("id")),
-                    type=result.asset_type,
+                    type=TARGET_TYPE,
                 )
             )
 

@@ -37,6 +37,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -179,6 +180,58 @@ def validate_templates() -> None:
     print(f"\n[OK] All {len(templates)} templates passed validation")
 
 
+def check_template_attrs() -> None:
+    """Fail the build if a template reads an attribute that does not
+    exist on the bundled library's types.
+
+    Runs mypy over the shipped templates against the freshly-synced
+    bundle (MYPYPATH = SKILL_SRC) and aborts on `[attr-defined]` ONLY.
+    Every other diagnostic is known noise (mypy cannot see
+    IdentifierType's id/type aliases, list invariance in the Operations
+    signatures, ...) and is counted but ignored. Dev-only: nothing here
+    is added to the zip.
+    """
+    templates = sorted((SKILL_SRC / "templates").glob("*.py"))
+    if not templates:
+        sys.exit("[BUILD ERROR] No templates found — refusing to ship an empty bundle")
+
+    env = {**os.environ, "MYPYPATH": str(SKILL_SRC)}
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            "--ignore-missing-imports",
+            "--follow-imports=silent",
+            "--no-error-summary",
+            *map(str, templates),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    output = proc.stdout + proc.stderr
+    if "No module named mypy" in output or proc.returncode not in (0, 1):
+        sys.exit(
+            "[BUILD ERROR] The template attribute check needs mypy and it "
+            f"did not run cleanly (exit {proc.returncode}). Run "
+            "`./.conda/bin/pip install mypy` (or `pip install -e "
+            '"./mcp[dev]"`) and rebuild.\n' + output
+        )
+
+    diagnostics = [line for line in output.splitlines() if ": error:" in line]
+    hits = [line for line in diagnostics if "[attr-defined]" in line]
+    ignored = len(diagnostics) - len(hits)
+    if hits:
+        print(f"\n[BUILD ERROR] {len(hits)} template attribute error(s):\n")
+        for line in hits:
+            print(f"  {Path(line.split(':', 1)[0]).name}:{line.split(':', 1)[1]}")
+        print(f"\n({ignored} other mypy diagnostic(s) ignored)")
+        sys.exit(1)
+    print(f"[OK] No [attr-defined] errors in templates ({ignored} other diagnostic(s) ignored)")
+
+
 def build_zip(tools_version: str) -> Path:
     DIST_DIR.mkdir(exist_ok=True)
     out = DIST_DIR / f"cascade-cms-tools-skill-{tools_version.replace('.', '')}.zip"
@@ -205,6 +258,7 @@ def build(tools_version: str, zip_it: bool) -> None:
     write_skill_manifest(library_version, files)
     write_security_gate()
     validate_templates()
+    check_template_attrs()
 
     if zip_it:
         build_zip(tools_version)

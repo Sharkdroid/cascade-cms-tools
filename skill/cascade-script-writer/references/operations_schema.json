@@ -345,7 +345,7 @@
     }
   },
   "response_models": {
-    "Asset": "Dict-backed wrapper, NOT a Pydantic model. Read with .get(key), write with attribute assignment (asset.field = value) — there is no __setitem__/__getitem__. .asset_type property. get_data_structure() returns LIVE references; get_page_configuration() returns READ-ONLY snapshots (edit the template / pageConfigurationSet asset instead). See references/asset_api.md.",
+    "Asset": "Dict-backed wrapper, NOT a Pydantic model. Read with .get(key), write with attribute assignment (asset.field = value) — there is no __setitem__/__getitem__. .internal_type property (lowercase wrapper key). get_data_structure() returns LIVE references; get_page_configuration() returns READ-ONLY snapshots (edit the template / pageConfigurationSet asset instead). See references/asset_api.md.",
     "CascadeSuccess": "{\"success\": true}. Frozen. The success return of every write operation.",
     "CascadeError": "{\"success\": false, \"message\": str}. Frozen. Returned as a VALUE by any operation that fails.",
     "IdentifierType": "See identifiers above. Returned by create.",

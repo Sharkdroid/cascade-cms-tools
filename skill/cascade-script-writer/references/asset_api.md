@@ -11,8 +11,14 @@ asset type. Nothing about its fields is schema-validated.
 asset.get("name")                 # read  — .get(), no default arg
 asset.get("metadata.summary")     # read  — dotted path, depth <= 5
 asset.name = "new-name"           # write — ATTRIBUTE assignment
-asset.asset_type                  # "page", "file", "folder", ...
+asset.internal_type               # lowercase wrapper key: "page",
+                                  # "file", "xhtmldatadefinitionblock", ...
 ```
+
+`internal_type` is NOT the request-side literal. To build an
+`IdentifierType`, use the type the script already knows, held in one
+`AssetTypes` constant (the `TARGET_TYPE` pattern in the callback
+templates); `IdentifierType(type=internal_type)` is rejected for blocks.
 
 ### `get()` semantics (cascade-cms-rest 3.1.6)
 
@@ -60,6 +66,21 @@ Cascade silently ignores: the edit reports success and
 metadata = asset.get("metadata")               # live dict
 metadata["displayName"] = "New Title"
 keywords = metadata.get("keywords") or ""       # dict.get: no KeyError
+```
+
+**Definition-owned fields.** A page cannot change fields that another
+asset's definition owns (live-verified):
+
+- Page configurations and regions are read-only on a page.
+- A dynamic metadata field's `name` (`metadata.dynamicFields[]`) is
+  defined by the metadata set. Edit its `fieldValues` only; renaming or
+  adding a field is a change to the metadata set asset. Confirm the
+  `fieldValues` shape with `cascade_query_asset` before writing:
+
+```python
+metadata = asset.get("metadata")               # live dict
+# find the dynamicFields entry whose name matches, in a loop
+field["fieldValues"] = ...
 ```
 
 ## Type changes are rejected

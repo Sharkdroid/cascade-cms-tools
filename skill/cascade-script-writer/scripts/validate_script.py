@@ -777,7 +777,8 @@ DESIGNATED_ACCESSOR_ROOTS = {
 def check_deprecated_get(tree: ast.Module) -> None:
     """Level 11: cascade-cms-rest 3.1.6 emits a warning when
     Asset.get() is asked for structuredData / pageConfigurations, since
-    those have designated accessors that return live references."""
+    those have designated accessors. structuredData nodes are live
+    references; page configurations are read-only snapshots."""
     warnings = []
     for node in ast.walk(tree):
         if (
@@ -790,9 +791,16 @@ def check_deprecated_get(tree: ast.Module) -> None:
         ):
             root = node.args[0].value.split(".")[0]
             if root in DESIGNATED_ACCESSOR_ROOTS:
+                accessor = DESIGNATED_ACCESSOR_ROOTS[root]
+                if root == "pageConfigurations":
+                    advice = (
+                        f"use {accessor} to READ it (read-only "
+                        "snapshot; a page's edit() cannot change it)."
+                    )
+                else:
+                    advice = f"use {accessor} instead."
                 warnings.append(
-                    f"line {node.lineno}: .get({node.args[0].value!r}) — use "
-                    f"{DESIGNATED_ACCESSOR_ROOTS[root]} instead."
+                    f"line {node.lineno}: .get({node.args[0].value!r}) — {advice}"
                 )
     for w in warnings:
         print(f"[WARN] {w}")

@@ -72,9 +72,13 @@ that no log, validator or result type will catch.
 - **Create:** use `cascade_search` to find an existing asset of the same
   type in the target site, from the same folder or content type if
   possible. Then run `find("<field>")` on it.
-- **Structured data and page configurations:** use
-  `cascade_get_data_structure` / `cascade_get_page_config` (see "Editing
+- **Structured data:** use `cascade_get_data_structure` (see "Editing
   structured-data nodes").
+- **Page configurations are READ-ONLY.** A script cannot write them
+  through a page (Cascade drops the edit), so there is no path to confirm.
+  Edit regions on the `template` asset (`pageRegions`) and
+  configurations on the `pageConfigurationSet` asset
+  (`pageConfiguration`). `cascade_get_page_config` is for reading only.
 
 Write the field at exactly the path returned:
 
@@ -90,6 +94,22 @@ Write the field at exactly the path returned:
   need.
 - List each written field with its verified path when you present the
   script (Step 7).
+
+**Definition-owned fields.** Some fields belong to another asset's
+definition, and a page cannot change them (live-verified):
+
+- Page configurations and regions are read-only on a page.
+- A dynamic metadata field's `name` (`metadata.dynamicFields[]`) is
+  defined by the metadata set and cannot be changed through the page.
+  Edit its `fieldValues` only. Renaming or adding a field is a change to
+  the metadata set asset. Edit `fieldValues` through the live dict,
+  like other metadata (confirm the shape with `cascade_query_asset`):
+
+```python
+metadata = asset.get("metadata")
+# find the dynamicFields entry whose name matches, in a loop
+field["fieldValues"] = ...
+```
 
 After the first write stage (Step 6e), read the written fields back with
 `cascade_query_asset` and confirm the new values are there. A success

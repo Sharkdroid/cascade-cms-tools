@@ -42,7 +42,7 @@ def dispatch(result: object) -> None:
         print("WRITE OK")
     elif isinstance(result, Asset):
         path = result.get("path")
-        print(f"ASSET {result.asset_type}: {path}")
+        print(f"ASSET {result.internal_type}: {path}")
     elif isinstance(result, IdentifierType):
         print(f"CREATED {result.get_type} {result.get_id}")
     elif isinstance(result, CheckedOutAsset):

@@ -47,7 +47,7 @@ totals: dict[str, int] = {}
 def tally_by_type(result: Asset) -> None:
     # A failed read never reaches the callback; the
     # library counts it and reports it at exit.
-    key = result.asset_type
+    key = result.internal_type
     with _lock:
         totals[key] = totals.get(key, 0) + 1
 

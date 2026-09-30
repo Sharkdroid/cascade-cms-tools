@@ -50,7 +50,7 @@ def main() -> None:
 
         for result in results.success:
             name = result.get("name")
-            print(f"{result.asset_type}: {name}")
+            print(f"{result.internal_type}: {name}")
 
 
 if __name__ == "__main__":
