@@ -9,8 +9,13 @@
   cascade_get_data_structure; else ask the user.
 - A None or wrong count RAISES: a typo would otherwise
   edit nothing and still report success.
-- Group identifiers can repeat and nest; every match
-  is edited.
+- Group identifiers can repeat and nest. direct=True
+  reads only the group's own fields, never a same-
+  named field in a nested group. Every instance of
+  the group is edited.
+- If the group identifier repeats under different
+  parents, pass a tuple path ending at the group,
+  e.g. ("page-section", "column").
 - A raise here is logged as [CASCADE-REST-CMS]
   (LIBRARY) with your message after "ValueError:".
   The prefix does not mean a library bug.
@@ -44,9 +49,10 @@ None: the "text" key is removed, the node stays.
 Chooser (asset) nodes are not covered here: see
 SKILL.md, "File choosers".
 
-get_data_structure(group, identifier) returns matching
-nodes BY REFERENCE, so setting node["text"] edits the
-asset itself. One chain per target:
+get_data_structure(group, identifier, direct=True)
+returns matching nodes BY REFERENCE, so setting
+node["text"] edits the asset itself. One chain per
+target:
 `read(identifier).edit(update_node)`.
 """
 
@@ -79,7 +85,10 @@ TARGETS: list[IdentifierType] = [
     ),
 ]
 
-GROUP: str = "contact-block"
+# A group identifier (a str is always ONE identifier,
+# dots allowed), or a tuple path ending at the group
+# you mean, e.g. ("page-section", "column").
+GROUP: str | tuple[str, ...] = "contact-block"
 FIELD: str = "phone"
 FIELD_KIND: str = "text"
 ALLOWED_OPTIONS: list[str] = []
@@ -162,9 +171,16 @@ def update_node(asset: Asset) -> Asset:
     text = encode_value(
         FIELD_KIND, NEW_VALUE, ALLOWED_OPTIONS
     )
-    nodes = asset.get_data_structure(GROUP, FIELD)
+    group_label = (
+        GROUP if isinstance(GROUP, str) else "/".join(GROUP)
+    )
+    # Only GROUP's own fields; never a same-named field
+    # in a nested group.
+    nodes = asset.get_data_structure(
+        GROUP, FIELD, direct=True
+    )
     if not nodes:
-        raise ValueError(f"no {GROUP}/{FIELD} node")
+        raise ValueError(f"no {group_label}/{FIELD} node")
     if len(nodes) != EXPECTED_COUNT:
         raise ValueError(
             f"expected {EXPECTED_COUNT} node(s), "
@@ -172,7 +188,7 @@ def update_node(asset: Asset) -> Asset:
         )
     # Count only; never log the values.
     script_log.note(
-        f"set {GROUP}/{FIELD} ({FIELD_KIND}) on "
+        f"set {group_label}/{FIELD} ({FIELD_KIND}) on "
         f"{asset.get('id')}: {len(nodes)} node(s)"
     )
     for node in nodes:

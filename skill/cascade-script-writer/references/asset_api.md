@@ -193,7 +193,9 @@ Both accessors return **references into the asset**, so mutating what they
 return mutates the asset itself:
 
 ```python
-nodes = asset.get_data_structure("contact-block", "phone")
+nodes = asset.get_data_structure(
+    "contact-block", "phone", direct=True
+)
 if nodes:
     for node in nodes:
         node["text"] = "+1 555 0100"    # asset is now modified
@@ -203,9 +205,15 @@ if region is not None:
     print(region.block_path, region.format_path)   # read-only
 ```
 
-- `get_data_structure(group, identifier)` → `list[dict] | None`. Matches
-  EVERY group with that identifier, nested ones included, and returns the
-  matching node from each. Returns `None` on any miss (missing field or
+- `get_data_structure(group, identifier, *, direct=False)` →
+  `list[dict] | None`. `group` is a `str` (ONE identifier; dots are part
+  of it) or a `tuple[str, ...]` path that ends at the group, e.g.
+  `("accordion", "row")`. Matches EVERY group with that identifier (or
+  path), nested ones included, and returns the matching node from each.
+  The default search is depth-first and can return a nested group's
+  same-named field; pass `direct=True` to look only at the group's own
+  fields, and a tuple path when the identifier repeats under different
+  parents. Returns `None` on any miss (missing field or
   group, empty group, no structured data), so guard it: a typo otherwise
   edits nothing. A group node without `structuredDataNodes` raises
   `KeyError`. The returned nodes are live references, so edits reach the

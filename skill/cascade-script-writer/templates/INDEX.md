@@ -45,7 +45,7 @@ publish templates) are delivered in stages — see `SKILL.md` Step 6.
 | Count or collect across all results, print a report | `callback-accumulator` |
 | Show progress while a long batch runs | `callback-progress-reporting` |
 | Keep going when one result's processing fails | `callback-error-isolation` |
-| Edit specific structured-data nodes (one group + one field); has strict encoders for text, radio, multi-select, checkbox, calendar, datetime | `callback-structured-data-edit` |
+| Edit specific structured-data nodes (one group + one field; `direct=True`, tuple group paths); has strict encoders for text, radio, multi-select, checkbox, calendar, datetime | `callback-structured-data-edit` |
 | Inspect page-configuration regions | `callback-page-region-audit` |
 
 ## Failure handling

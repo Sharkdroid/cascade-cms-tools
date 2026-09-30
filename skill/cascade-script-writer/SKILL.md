@@ -447,7 +447,7 @@ when any segment is missing — there is no default argument, so guard with
 `try/except KeyError` when a field may be absent. Use it for nested metadata
 (`asset.get("metadata.dynamicFields")`), **not** for `structuredData` or
 `pageConfigurations`: `get()` emits a warning for those roots. Use
-`asset.get_data_structure(group, identifier)` and
+`asset.get_data_structure(group, identifier, direct=True)` and
 `asset.get_page_configuration(name, region)` instead. Structured-data nodes
 are live references you can edit in place; page configurations and regions
 are READ-ONLY snapshots (3.7.0+) — Cascade ignores region edits on `edit()`,
@@ -558,7 +558,9 @@ for a malformed entry. Use it instead of `IdentifierType(**child)`.
 Address the smallest thing: one group, one field.
 
 ```python
-nodes = asset.get_data_structure("contact", "phone")
+nodes = asset.get_data_structure(
+    "contact", "phone", direct=True
+)
 ```
 
 It returns live references to the matching nodes, so setting a node's
@@ -582,8 +584,9 @@ Guard the result. `get_data_structure()` returns `None` for any miss
 the unchanged asset makes the edit succeed with nothing changed. Raise
 inside the callback when the result is empty, and compare the count with
 what you expect: a group identifier can repeat and nest, and every group
-with that identifier is matched, nested ones included. If the count
-differs, stop and ask.
+with that identifier is matched, nested ones included. The count cannot
+catch a nested group's same-named field (see "Repeated and nested
+groups"). If the count differs, stop and ask.
 
 Change only what you have confirmed. Confirm the node's live shape first
 (MCP, or a read-only preview stage). Text fields and radio buttons
@@ -641,13 +644,20 @@ File choosers (`type: "asset"`, live-verified on a file chooser):
 - Untested: block and page choosers, chooser types other than file,
   and checkbox or multi-select. Confirm those live.
 
-Repeated and nested groups (live-verified offline on a real page):
-`get_data_structure(group, field)` returns one node per group INSTANCE
-across every parent, with no link back to the parent, and only the
-first depth-first match inside each instance. Search the innermost
-group (`column`, not `main-content`), and assert the count you expect.
-A field name that also exists in a child group (`title` in both) is
-unreachable through the parent.
+Repeated and nested groups (verified offline against a copy of a real
+page's payload): `get_data_structure(group, field)` returns one node per
+group INSTANCE across every parent, with no link back to the parent.
+With the default search it takes the first depth-first match inside each
+instance, which can be a nested group's node. When a field name also
+exists in a child group (`title` in both), a lookup through the parent
+can return the CHILD's node: the parent's own `title` if it comes first
+in node order, the child's if a nested group comes first or if the
+parent has no `title`. Rule: pass `direct=True`, which matches only the
+group's own fields. When a group identifier repeats under different
+parents, pass a tuple path ending at the group,
+`("page-section", "column")`. A `str` is always ONE identifier (dots
+allowed); a tuple is a path. Assert the count you expect, but the count
+cannot catch this case: it is still 1 when the wrong node is returned.
 
 Live data showed three details to respect:
 

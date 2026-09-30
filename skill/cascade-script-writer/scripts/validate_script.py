@@ -39,6 +39,9 @@ Checks, each gating the next:
  15. Root private read - warns on ._data["structuredData"] and
                           ._data["pageConfigurations"]; use the accessor.
                           (._data.get(...) is covered by level 11.)
+ 16. get_data_structure - warns when <x>.get_data_structure(...) has no
+                          direct= keyword (a nested group's same-named
+                          field can be returned). Exit code stays 0.
 
 Usage:
     python validate_script.py path/to/generated_script.py
@@ -769,7 +772,7 @@ def check_line_length(source: str, path: str) -> None:
 
 
 DESIGNATED_ACCESSOR_ROOTS = {
-    "structuredData": "asset.get_data_structure(group, identifier)",
+    "structuredData": "asset.get_data_structure(group, identifier, direct=True)",
     "pageConfigurations": "asset.get_page_configuration(name, region)",
 }
 
@@ -934,9 +937,9 @@ ACCESSOR_ROOT_RULES: dict[str, tuple[str, str, str]] = {
     "structuredData": (
         "STRUCTURED-DATA",
         "replaces the whole data structure. Edit specific nodes: "
-        "nodes = asset.get_data_structure(group, identifier); set "
-        "node['text']; return the asset.",
-        "asset.get_data_structure(group, identifier)",
+        "nodes = asset.get_data_structure(group, identifier, "
+        "direct=True); set node['text']; return the asset.",
+        "asset.get_data_structure(group, identifier, direct=True)",
     ),
     "pageConfigurations": (
         "PAGE-CONFIG",
@@ -1009,6 +1012,34 @@ def check_accessor_root_private_access(tree: ast.Module) -> None:
     )
 
 
+def check_get_data_structure_direct(tree: ast.Module) -> None:
+    """Level 16: WARN on <x>.get_data_structure(...) with no
+    direct= keyword. The default search is depth-first, so it can
+    return a same-named field from a nested group. direct=False
+    written out is a deliberate choice and is not flagged. A str
+    group with a dot is a legal identifier and is not flagged."""
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get_data_structure"
+            and not any(kw.arg == "direct" for kw in node.keywords)
+        ):
+            lines.append(node.lineno)
+    for line in sorted(set(lines)):
+        print(
+            f"[WARN] line {line}: get_data_structure without "
+            "direct=True can return a same-named field from a "
+            "nested group; pass direct=True (and a tuple path if "
+            "the group repeats)."
+        )
+    print(
+        "[OK] get_data_structure direct= check passed"
+        + (" (with warnings)" if lines else "")
+    )
+
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python validate_script.py path/to/generated_script.py")
@@ -1034,6 +1065,7 @@ def main():
     check_submit_in_loop(tree, source)
     check_accessor_root_assignment(tree)
     check_accessor_root_private_access(tree)
+    check_get_data_structure_direct(tree)
 
     print("\nAll static checks passed. No network calls were made.")
 
