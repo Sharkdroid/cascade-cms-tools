@@ -31,10 +31,13 @@ _EXPAND_HINT_BY_KEY: dict[str, str] = {
 # Steers any other collapsed top-level field (any asset shape - metadata sets
 # included, not just pages/content-type-bound assets) toward a narrowed
 # cascade_query_asset read first, rather than straight at a full detailed dump.
-_DEFAULT_EXPAND_HINT = (
-    'cascade_query_asset(query="<key>") for a narrowed read, or '
-    'cascade_read_asset(format="detailed") for everything'
-)
+def _default_expand_hint(key: str) -> str:
+    """Runnable hint for a collapsed top-level key: `key` is a plain
+    top-level field name, so it is itself a valid query."""
+    return (
+        f'cascade_query_asset(query="{key}") for a narrowed read, or '
+        'cascade_read_asset(format="detailed") for everything'
+    )
 
 # `limit` is how many matches or list items a tool returns to the agent.
 DEFAULT_LIMIT = 50
@@ -61,7 +64,9 @@ def _collapse_value(key: str, value: Any) -> Any:
         return {
             "_collapsed": True,
             "count": len(value),
-            "expand_with": _EXPAND_HINT_BY_KEY.get(key, _DEFAULT_EXPAND_HINT),
+            "expand_with": _EXPAND_HINT_BY_KEY.get(
+                key, _default_expand_hint(key)
+            ),
         }
     # Raw JSON only ever produces the types above; stringify rather than
     # crash on anything unforeseen.

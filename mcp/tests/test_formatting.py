@@ -51,7 +51,7 @@ def test_format_asset_concise_collapses_dict_and_list():
         "_collapsed": True,
         "count": 2,
         "expand_with": (
-            'cascade_query_asset(query="<key>") for a narrowed read, or '
+            'cascade_query_asset(query="metadata") for a narrowed read, or '
             'cascade_read_asset(format="detailed") for everything'
         ),
     }
@@ -59,7 +59,7 @@ def test_format_asset_concise_collapses_dict_and_list():
         "_collapsed": True,
         "count": 3,
         "expand_with": (
-            'cascade_query_asset(query="<key>") for a narrowed read, or '
+            'cascade_query_asset(query="tags") for a narrowed read, or '
             'cascade_read_asset(format="detailed") for everything'
         ),
     }
@@ -271,3 +271,19 @@ def test_search_results_omit_filtered_count_when_nothing_dropped():
     )
 
     assert "filtered_count" not in format_search_results(elements)
+
+
+def test_default_expand_hint_is_runnable_for_its_key():
+    import re
+
+    from cascade_cms_rest_mcp.query import evaluate, parse_query
+
+    asset = _asset({"metadata": {"title": "x"}, "tags": ["a"]})
+
+    result = format_asset(asset, format="concise")
+
+    for key in ("metadata", "tags"):
+        hint = result[key]["expand_with"]
+        query_text = re.search(r'query="([^"]*)"', hint).group(1)
+        matches = evaluate(asset._data, parse_query(query_text))
+        assert [m.value for m in matches] == [asset._data[key]]

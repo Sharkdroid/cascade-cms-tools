@@ -210,7 +210,7 @@ def page_region_requires_configuration_name_error(*, context: str) -> ToolError:
 def invalid_query_error(query: str, reason: str, *, context: str) -> ToolError:
     return _tool_error(
         f"{context}: query {query!r} is not valid - {reason}. Examples of valid "
-        'queries: \'metadata.dynamicFields[0].value\', \'metadata["dynamicFields"][0]\', '
+        'queries: \'metadata.dynamicFields[0].fieldValues[0].value\', \'metadata["dynamicFields"][0]\', '
         '\'metadata["*"]\' (wildcard over a list/dict), \'find("identifier")\' (search '
         "the whole asset for a key by name, at any depth)."
     )

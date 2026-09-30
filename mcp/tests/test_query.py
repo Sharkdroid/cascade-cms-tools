@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from cascade_cms_rest_mcp.query import QueryError, evaluate, parse_query
 
@@ -167,3 +169,45 @@ def test_plain_forms_still_work():
 def test_misplaced_dollar_is_rejected(bad):
     with pytest.raises(QueryError):
         parse_query(bad)
+
+
+def test_dynamic_fields_example_parses_and_returns_value():
+    data = {
+        "metadata": {
+            "dynamicFields": [
+                {"name": "audience", "fieldValues": [{"value": "v"}]}
+            ]
+        }
+    }
+    q = "metadata.dynamicFields[0].fieldValues[0].value"
+
+    assert _matches(data, q)[0].value == "v"
+    # the old, wrong example (no such key) matches nothing
+    assert _matches(data, "metadata.dynamicFields[0].value") == []
+
+
+def test_non_identifier_keys_get_bracket_paths():
+    data = {"m": {"odd key": 1, "a.b": 2, "class": 3, "plain": 4}}
+
+    paths = {x.path for x in _matches(data, 'm["*"]')}
+
+    assert paths == {
+        '$.m["odd key"]',
+        '$.m["a.b"]',
+        '$.m["class"]',
+        "$.m.plain",
+    }
+
+
+def test_non_identifier_key_paths_round_trip():
+    data = {"m": {"odd key": {"x": 1}, "a.b": {"x": 2}, "q\"t": 5}}
+    for key in ("odd key", "a.b", 'q"t', "x"):
+        for found in _matches(data, f"find({json.dumps(key)})"):
+            assert _matches(data, found.path) == [found]
+
+
+def test_literal_bracket_key_is_not_an_index():
+    data = {"m": {"[0]": "k"}, "n": ["i"]}
+
+    assert _matches(data, "m.find(\"[0]\")")[0].path == '$.m["[0]"]'
+    assert _matches(data, "n[0]")[0].path == "$.n[0]"

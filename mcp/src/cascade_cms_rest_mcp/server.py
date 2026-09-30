@@ -172,7 +172,8 @@ def cascade_query_asset(
     pages, etc.), not just data-bound assets.
 
     Query syntax: dict/list navigation like a Python expression, e.g.
-    'metadata.dynamicFields[0].value' or 'metadata["dynamicFields"][0]'. Use
+    'metadata.dynamicFields[0].fieldValues[0].value' or
+    'metadata["dynamicFields"][0]'. Use
     '*' for a wildcard (every item of a list, or every value of a dict, at
     that position - e.g. 'metadata["*"]') and 'find("someKey")' to search the
     entire asset for a key by name at any depth, regardless of shape - useful
@@ -303,9 +304,10 @@ def cascade_get_data_structure(
 
 
 REGION_CAUTION = (
-    "Cascade's noBlock/noFormat flags are unreliable (they can be false "
-    "when no block/format id or path exists); trust the ids/paths. "
-    "Regions cannot be edited via an asset edit: edit the template "
+    "noBlock/noFormat are override checkboxes, independent of whether a "
+    "block/format is assigned: read assignment from the ids/paths and "
+    "the override from the flag. Match regions by name (order changes on "
+    "save). Regions cannot be edited via an asset edit: edit the template "
     "asset's pageRegions."
 )
 
@@ -327,9 +329,11 @@ def cascade_get_page_config(
     authored on this instance for that configuration.
     Both given: returns that region's block/format bindings.
 
-    Caution: regions are read-only snapshots and Cascade's noBlock/noFormat
-    flags are unreliable (seen false with no blockId/blockPath or
-    formatId/formatPath). Trust the ids/paths, not the flags.
+    Caution: regions are read-only snapshots. noBlock/noFormat are override
+    checkboxes, independent of assignment (a region can have a
+    blockId/blockPath and noBlock true, or false with no block): read what
+    is assigned from the ids/paths, the override from the flag. Region order
+    changes on save; match by name.
 
     limit: max items returned; default 50, clamped to 1..200.
     """

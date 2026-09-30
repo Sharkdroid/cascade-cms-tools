@@ -2,7 +2,8 @@
 Cascade asset JSON (`asset._data`), so an agent can narrow a read to one
 sub-value instead of collapsing/dumping the whole payload.
 
-Query strings look like a Python expression - `metadata.dynamicFields[0].value`,
+Query strings look like a Python expression -
+`metadata.dynamicFields[0].fieldValues[0].value`,
 `metadata["dynamicFields"][0]`, `metadata["*"]`, `find("identifier")` - but are
 never `eval`'d. `ast.parse(..., mode="eval")` builds a real AST, which is then
 walked by a tiny whitelist that only understands attribute/subscript chains,
@@ -20,6 +21,8 @@ type (Asset.__init__ in cmstypes.py treats `_data` as a schema-less dict).
 from __future__ import annotations
 
 import ast
+import json
+import keyword
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
@@ -147,6 +150,16 @@ def _walk_find_call(node: ast.Call) -> list[Step]:
     return [*base, Find(arg.value)]
 
 
+def _key_part(key: str) -> str:
+    """Path part for a dict key. A plain identifier stays bare (printed as
+    `.key`); anything else (space, dot, keyword, ...) becomes a bracket
+    part, `["odd key"]`, which the parser already accepts. Bracket parts
+    never collide with index parts (`[3]`) because the key is quoted."""
+    if key.isidentifier() and not keyword.iskeyword(key):
+        return key
+    return f"[{json.dumps(key)}]"
+
+
 def _format_path(parts: tuple[str, ...]) -> str:
     path = "$"
     for part in parts:
@@ -160,7 +173,7 @@ def _find_all(
     matches: list[tuple[tuple[str, ...], Any]] = []
     if isinstance(value, dict):
         for key, sub_value in value.items():
-            sub_path = (*path, key)
+            sub_path = (*path, _key_part(key))
             if key == name:
                 matches.append((sub_path, sub_value))
             matches.extend(_find_all(sub_path, sub_value, name))
@@ -181,7 +194,9 @@ def evaluate(data: Any, steps: list[Step]) -> list[Match]:
         for path, value in current:
             if isinstance(step, Key):
                 if isinstance(value, dict) and step.name in value:
-                    next_current.append(((*path, step.name), value[step.name]))
+                    next_current.append(
+                        ((*path, _key_part(step.name)), value[step.name])
+                    )
             elif isinstance(step, Index):
                 if isinstance(value, list) and -len(value) <= step.value < len(value):
                     next_current.append(((*path, f"[{step.value}]"), value[step.value]))
@@ -192,7 +207,8 @@ def evaluate(data: Any, steps: list[Step]) -> list[Match]:
                     )
                 elif isinstance(value, dict):
                     next_current.extend(
-                        ((*path, key), item) for key, item in value.items()
+                        ((*path, _key_part(key)), item)
+                        for key, item in value.items()
                     )
             elif isinstance(step, Find):
                 next_current.extend(_find_all(path, value, step.name))
