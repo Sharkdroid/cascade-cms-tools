@@ -115,3 +115,55 @@ def test_empty_query_returns_the_whole_root():
 def test_rejected_syntax_raises_query_error_before_touching_data(bad_query):
     with pytest.raises(QueryError):
         parse_query(bad_query)
+
+
+_SAMPLE = {
+    "title": "t",
+    "metadata": {
+        "title": "m",
+        "dynamicFields": [{"name": "a"}, {"name": "b", "title": "x"}],
+    },
+    "x": [1, 2],
+}
+
+
+def test_dollar_alone_equals_empty_query():
+    assert _matches(_SAMPLE, "$") == _matches(_SAMPLE, "")
+    assert _matches(_SAMPLE, " $ ") == _matches(_SAMPLE, "")
+
+
+def test_returned_paths_round_trip_as_queries():
+    for key in ("title", "name", "dynamicFields"):
+        for found in _matches(_SAMPLE, f'find("{key}")'):
+            again = _matches(_SAMPLE, found.path)
+            assert again == [found]
+
+
+def test_expand_with_hint_query_parses():
+    import re
+
+    from cascade_cms_rest_mcp.formatting import _collapse_query_match
+
+    match = _matches(_SAMPLE, "metadata.dynamicFields")[0]
+    hint = _collapse_query_match(match.path, match.value)["expand_with"]
+    query_text = re.search(r'query="([^"]*)"', hint).group(1)
+
+    assert _matches(_SAMPLE, query_text) == [match]
+
+
+def test_plain_forms_still_work():
+    assert _matches(_SAMPLE, "metadata")[0].path == "$.metadata"
+    name = "metadata.dynamicFields[0].name"
+    assert _matches(_SAMPLE, name)[0].value == "a"
+    assert len(_matches(_SAMPLE, 'find("title")')) == 3
+    assert len(_matches(_SAMPLE, 'metadata.find("title")')) == 2
+    assert len(_matches(_SAMPLE, 'x["*"]')) == 2
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["metadata.$x", "$$.metadata", "$.", '$["metadata"]', "$metadata"],
+)
+def test_misplaced_dollar_is_rejected(bad):
+    with pytest.raises(QueryError):
+        parse_query(bad)

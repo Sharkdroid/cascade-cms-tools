@@ -436,7 +436,12 @@ def cascade_root_container_id(
 ) -> dict[str, Any]:
     """Get the root container id (top-level folder) for datadefinition/sharedfield/
     folder assets on a site - the starting point for browsing that asset type's
-    tree from the top (e.g. the site's root Data Definitions folder)."""
+    tree from the top (e.g. the site's root Data Definitions folder).
+
+    site_identifier: an id+type identifier, or a Path. A Path MUST
+    include siteName (asset_type "site"); without it the request URL
+    can't be built.
+    """
     try:
         with _wrapper() as cascade:
             cascade.operations.read(site_identifier)

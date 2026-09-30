@@ -136,7 +136,9 @@ def group_not_found_error(
     )
     return _tool_error(
         f"{context}: group '{group}' not found in data definition "
-        f"{data_definition.get('id')}. Available groups: {available}."
+        f"{data_definition.get('id')}. Available groups: {available}. "
+        "There is no root group; pass one of these top-level group "
+        "identifiers."
     )
 
 

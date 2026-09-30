@@ -60,10 +60,16 @@ class Match(NamedTuple):
 
 def parse_query(query: str) -> list[Step]:
     """Parse a query string into a list of Steps. An empty/whitespace-only
-    query means "the whole asset" (no steps, root value only)."""
+    query means "the whole asset" (no steps, root value only).
+
+    A leading "$" (the root marker `_format_path` prints on every
+    match path) is accepted so a returned path or expand_with hint can be
+    reused verbatim: "$" alone is the whole asset, "$.rest" is "rest".
+    "$[...": rejected - the grammar has no leading-subscript form."""
     text = query.strip()
-    if not text:
+    if text == "$" or not text:
         return []
+    text = text.removeprefix("$.")
     try:
         tree = ast.parse(text, mode="eval")
     except SyntaxError as exc:
