@@ -153,6 +153,20 @@ def test_expand_with_hint_query_parses():
     assert _matches(_SAMPLE, query_text) == [match]
 
 
+def test_expand_with_hint_escapes_quoted_key_paths():
+    import re
+
+    from cascade_cms_rest_mcp.formatting import _collapse_query_match
+
+    data = {"metadata": {"odd key": {"a": 1}}}
+    match = _matches(data, 'metadata["odd key"]')[0]
+    hint = _collapse_query_match(match.path, match.value)["expand_with"]
+    raw = re.search(r'query=("(?:[^"\\]|\\.)*")', hint).group(1)
+
+    assert json.loads(raw) == match.path
+    assert _matches(data, json.loads(raw)) == [match]
+
+
 def test_plain_forms_still_work():
     assert _matches(_SAMPLE, "metadata")[0].path == "$.metadata"
     name = "metadata.dynamicFields[0].name"

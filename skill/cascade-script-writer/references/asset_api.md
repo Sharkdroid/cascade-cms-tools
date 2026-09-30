@@ -164,8 +164,10 @@ results = cascade.submit_requests(CascadeSuccess)
 
 ## Turning raw `{id, type, path}` dicts into identifiers
 
-Folder `children`, search hits and similar raw entries are dicts, not
-`IdentifierType`. Convert them with `cascade_cms.utils` (pure, no I/O;
+Folder `children` and any other raw `{id, type, path}` dicts are not
+`IdentifierType`. (`search()` results are different: they arrive as
+`ListElements` whose entries are already `IdentifierType`; use them as
+they are and do not pass them to `to_identifiers`.) Convert them with `cascade_cms.utils` (pure, no I/O;
 see `templates/read-tree.py`):
 
 ```python

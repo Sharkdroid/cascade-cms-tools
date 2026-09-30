@@ -7,6 +7,8 @@ import os
 
 from cascade_cms.cmstypes import (
     Asset,
+    AssetTypes,
+    FieldsSearchTypes,
     IdentifierType,
     ListElements,
     SearchInformation,
@@ -24,6 +26,12 @@ environment_variables: EnvironmentVars = {
 }
 
 SITE_NAME: str = "www"
+# An inline list literal is inferred as list[str].
+SEARCH_FIELDS: list[FieldsSearchTypes] = [
+    "title",
+    "keywords",
+]
+SEARCH_TYPES: list[AssetTypes] = ["page"]
 
 
 def main() -> None:
@@ -34,8 +42,8 @@ def main() -> None:
             SearchInformation(
                 site_name=SITE_NAME,
                 search_terms="annual report",
-                search_fields=["title", "keywords"],
-                search_types=["page"],
+                search_fields=SEARCH_FIELDS,
+                search_types=SEARCH_TYPES,
             )
         )
 

@@ -36,3 +36,6 @@ mcp/tests/output.txt
 
 # OS
 .DS_Store
+
+# Handoff notes (keep out of repo and release bundles)
+handoff*.txt

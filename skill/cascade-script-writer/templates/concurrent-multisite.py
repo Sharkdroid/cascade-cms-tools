@@ -9,6 +9,7 @@ many sites beats a loop of batches.
 import os
 
 from cascade_cms.cmstypes import (
+    AssetTypes,
     IdentifierType,
     ListElements,
     SearchInformation,
@@ -27,6 +28,8 @@ environment_variables: EnvironmentVars = {
 
 SITES: list[str] = ["www", "admissions", "research"]
 SEARCH_TERM: str = "accreditation"
+# An inline list literal is inferred as list[str].
+SEARCH_TYPES: list[AssetTypes] = ["page"]
 
 
 def main() -> None:
@@ -38,7 +41,7 @@ def main() -> None:
                 SearchInformation(
                     site_name=site,
                     search_terms=SEARCH_TERM,
-                    search_types=["page"],
+                    search_types=SEARCH_TYPES,
                 )
             )
 

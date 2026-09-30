@@ -20,7 +20,11 @@ the earlier phase, then build the NewAsset.
 import os
 import uuid
 
-from cascade_cms.cmstypes import Asset, IdentifierType
+from cascade_cms.cmstypes import (
+    Asset,
+    AssetTypes,
+    IdentifierType,
+)
 from cascade_cms.failures import ChainResults
 from cascade_cms.wrapper import (
     CascadeWrapperBase,
@@ -59,7 +63,7 @@ def report_failed(results: ChainResults[Asset]) -> None:
 
 
 def unseen(
-    ids: dict[str, str], memo: dict[str, Asset]
+    ids: dict[str, AssetTypes], memo: dict[str, Asset]
 ) -> list[IdentifierType]:
     """Pure: identifiers (id -> type) not yet in memo."""
     return [
@@ -81,7 +85,7 @@ def main() -> None:
         pages = page_results.success
 
         # Submit 2: content types, deduped.
-        wanted: dict[str, str] = {}
+        wanted: dict[str, AssetTypes] = {}
         page_count: dict[str, int] = {}
         for page in pages:
             ct = field_id(page, "contentTypeId")

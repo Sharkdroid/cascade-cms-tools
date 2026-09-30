@@ -8,6 +8,7 @@ so this is precedented, not a hack.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any, Literal
 
@@ -35,7 +36,8 @@ def _default_expand_hint(key: str) -> str:
     """Runnable hint for a collapsed top-level key: `key` is a plain
     top-level field name, so it is itself a valid query."""
     return (
-        f'cascade_query_asset(query="{key}") for a narrowed read, or '
+        f"cascade_query_asset(query={json.dumps(key)}) "
+        "for a narrowed read, or "
         'cascade_read_asset(format="detailed") for everything'
     )
 
@@ -99,7 +101,10 @@ def _collapse_query_match(path: str, value: Any) -> Any:
         return {
             "_collapsed": True,
             "count": len(value),
-            "expand_with": f'cascade_query_asset(query="{path}", format="detailed")',
+            "expand_with": (
+                f"cascade_query_asset(query={json.dumps(path)}, "
+                'format="detailed")'
+            ),
         }
     return str(value)
 
