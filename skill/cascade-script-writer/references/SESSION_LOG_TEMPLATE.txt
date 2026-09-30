@@ -1,0 +1,87 @@
+(FORMAT REFERENCE ONLY. The agent never modifies this file; it
+copies the structure into reports/ and writes only there.)
+
+CASCADE SCRIPT SESSION LOG
+==========================
+Skill version : (library_version from _bundle_manifest.json)
+Session opened: (ISO 8601 timestamp, local time)
+Working dir   : (absolute path of the user's project directory)
+Task          : (one line, verbatim from the user's request;
+                quote it, do not paraphrase)
+
+--- TASK BREAKDOWN ---
+Operations    : (cascade operations the script will use,
+                e.g. read, create, edit)
+Targets       : (how assets are identified: UUID, Path, CSV, etc.)
+Data sources  : (what drives the script: hardcoded, CSV, user
+                input, MCP result, etc.)
+Write ops     : YES / NO  (any create/edit/delete/publish/etc.)
+
+--- REFERENCES READ ---
+(One line per file actually opened from the skill bundle this
+session. File name only, no path. Add a line as each file is
+opened, not all at once at the end.)
+Example:
+  SKILL.md
+  operations_schema.json
+  templates/create-bulk.py
+  references/asset_api.md
+
+--- MCP TOOL CALLS ---
+(One block per call. Add a block as each call is made.)
+Example:
+  Tool   : cascade_get_data_structure
+  Input  : asset_type=page, site=www.example.edu
+  Summary: resolved 3 groups (main-content, sidebar, metadata);
+           main-content has fields: title (text), body (WYSIWYG)
+
+--- TEMPLATE SELECTED ---
+Template: (filename from templates/)
+Reason  : (one or two sentences: why this template over others)
+Gaps    : (anything the template does not cover that the script
+          needs; "none" if fully covered)
+
+--- DESIGN DECISIONS ---
+(One block per non-obvious decision made while writing the script.
+Add a block as each decision is made. A decision is anything where
+SKILL.md was ambiguous, where you chose between two valid
+approaches, or where a template gap was worked around. If nothing
+supported it, write "Ref: no reference, judgment call".)
+Example:
+  Decision: used Path identifier instead of UUID
+  Reason  : CSV provides site + path, no UUID column
+  Ref     : operations_schema.json, Path identifier requirements
+
+--- VALIDATION RUNS ---
+(One block per validate_script.py run, pass or fail. On failure,
+list every check that failed and what changed before the next run.
+If the validator exits early, note which checks did not run.)
+Example:
+  Run 1 - FAILED
+    [TYPE HINT ERROR] line 12: def process() - no return type hint
+    [LINE LENGTH ERROR] 2 lines over 60 chars (lines 34, 67)
+    Fixed: added -> None; ran ruff format, wrapped 1 comment
+  Run 2 - PASSED
+    All checks passed. No network calls made.
+
+--- STAGED WRITES ---
+(Only for scripts with write operations. One block per stage. Add
+a block as each stage is agreed with the user. If an outcome was
+unexpected, log the diagnosis too. No writes: write
+"N/A - read-only script.")
+Example:
+  Stage 1: read asset + create new asset
+    Planned output: prints created asset identifier
+    User outcome  : exit 0, tally 0 failed 1 succeeded
+    Decision      : proceed to stage 2
+  Stage 2: delete created asset
+    Planned output: prints CascadeSuccess
+    User outcome  : exit 0, tally 0 failed 1 succeeded
+    Decision      : all stages confirmed, deliver full script
+
+--- DELIVERED ---
+Script   : (filename as written to the user's working directory)
+Confirmed: (write stages confirmed, or N/A)
+Notes    : (anything the user should know that is not in the
+           script itself: residual assets from staged runs,
+           known limitations found during the session, etc.)

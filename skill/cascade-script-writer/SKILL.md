@@ -25,6 +25,29 @@ directory where the user's script runs.
 
 Follow these steps in order.
 
+**Step 0 — Open the session log.** On every invocation of this skill,
+before any other work:
+
+a. Create `reports/` under the user's working directory if it does not
+   exist.
+b. Create a new file `reports/cascade-script-{YYYYMMDD-HHMMSS}.txt`,
+   using the local time at session open. If two sessions open in the
+   same second, add a counter suffix (`-1`, `-2`). Never overwrite or
+   truncate an existing log. UTF-8, no BOM.
+c. Copy the structure of `references/SESSION_LOG_TEMPLATE.txt` and fill
+   the header (Skill version, Session opened, Working dir, Task, the
+   task quoted verbatim). Never edit the template itself.
+d. Leave the other sections open. Append each one as its step
+   completes, never only at the end, so a session that stops midway
+   leaves a partial log showing how far it got.
+e. Suggest the user add `reports/` to their `.gitignore` if they use
+   git. The skill does not edit it.
+f. The log is written only when this skill is invoked.
+
+This log is your own working record. It is not the runtime log
+the library writes, `script_log.note()` lines in scripts, or the
+`REPORT_TEMPLATE.md` retrospective; none of those change.
+
 **Step 1 — Identify the task shape.** Determine: which operation(s), how the
 target assets are named (UUID or site+path), what data drives the work (CSV,
 hardcoded list, search results), and whether each result needs processing
@@ -36,6 +59,8 @@ unless they already said. Offer the common choices: shell environment
 variables read with `os.environ` (the templates' default), a `.env`
 file they load themselves, or values typed into the config block. Do
 not pick one silently, and never write a real API key into the script.
+
+Append TASK BREAKDOWN to the session log.
 
 **Step 2 — Pick a template.** Read `templates/INDEX.md` and choose the row
 matching the task shape. Only name a template that
@@ -50,12 +75,18 @@ python scripts/new_script.py --template create-bulk --out my_script.py
 
 If no template fits, start from the closest one and replace the operation.
 
+Append TEMPLATE SELECTED to the log (template, reason, gaps).
+
 **Step 3 — Look up exact names.** Read `references/operations_schema.json` for
 method signatures, payload fields, and aliases. Cascade payloads use aliases
 (`parentFolderId` vs `parent_folder_id`) that must match exactly — never guess
 a field name. For `Asset` reads/writes, read `references/asset_api.md`. When
 the schema is not detailed enough, read the bundled source in `cascade_cms/`;
 it is ground truth.
+
+Append each file you open to REFERENCES READ as you open it. After
+each MCP tool call, append an MCP TOOL CALLS block: tool name, key
+inputs, one sentence on what it returned.
 
 **Then confirm, live, where every written field goes.** The bundled source
 is ground truth for the *library*. Live Cascade data is ground truth for
@@ -166,6 +197,9 @@ structure: config block, `main()`, `with CascadeWrapperBase(...)`, one
 variable **type-hinted** and every line **60 characters or fewer** — see
 "Script conventions" below. Templates already comply; your edits must too.
 
+Append a DESIGN DECISIONS block for each judgment call (ambiguity,
+choosing between valid approaches, a template gap worked around).
+
 **Step 5 — Validate. This gate is mandatory.**
 
 ```bash
@@ -180,6 +214,8 @@ type hints and any line over 60 characters both fail it.
 **Cap this at 3 attempts.** If it still fails after the third run, stop and
 show the user the validator's output verbatim along with the current script.
 Do not keep looping.
+
+Append a VALIDATION RUNS block after every run, pass or fail.
 
 **Step 6 — Verify write operations in stages.** Applies to any script
 containing a write operation: `create`, `edit`, `delete`, `copy`, `move`,
@@ -235,15 +271,22 @@ g. Assembly stage: when every write has passed on its own, run the
 h. Only then deliver the full script (Step 7) and say which stages
    passed.
 
+Append a STAGED WRITES block after each stage (plan, expected output,
+the exit code and tally the user reported, decision; diagnosis if
+unexpected).
+
 **Step 7 — Present** the script with a one-line note on what it does and which
 environment variables it needs. For scripts that write, list each written
 field with its live-verified path, or mark it UNVERIFIED (Step 3). If the script has runtime-dynamic values the
 validator cannot check statically (CSV rows, search results), say so rather
 than implying full coverage.
 
+Append DELIVERED to the session log and close it.
+
 ### Checklist
 
 ```
+[ ] Session log opened in reports/ and appended step by step (Step 0)
 [ ] Asked the user how env vars/config are supplied (Step 1)
 [ ] Template chosen from templates/INDEX.md
 [ ] Field names/aliases confirmed in references/operations_schema.json
@@ -927,6 +970,7 @@ Read these on demand — don't load them all up front.
 
 | File | Read it when |
 |---|---|
+| `references/SESSION_LOG_TEMPLATE.txt` | Always, at Step 0 — format of the session log |
 | `templates/INDEX.md` | Always, at Step 2 — pick a starting template |
 | `templates/*.py` | 22 runnable, validator-passing scripts |
 | `references/operations_schema.json` | You need a signature, field name, or alias |
