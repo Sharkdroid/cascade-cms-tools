@@ -18,7 +18,7 @@ from cascade_cms.cmstypes import (
     ListElements,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -55,9 +55,7 @@ def dispatch(result: object) -> None:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read(TARGETS).then(dispatch)
         cascade.operations.listSites()
 

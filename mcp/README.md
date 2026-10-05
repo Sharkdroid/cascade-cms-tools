@@ -57,7 +57,7 @@ first thing to check.
 
 ## Configuration
 
-Required environment variables (same names `CascadeWrapperBase` already
+Required environment variables (same names `Cascade` already
 expects — no new credential-naming surface):
 
 | Variable | Required | Purpose |

@@ -67,7 +67,7 @@ from cascade_cms.cmstypes import (
 )
 from cascade_cms.utils import script_log
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -201,9 +201,7 @@ def update_node(asset: Asset) -> Asset:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         for identifier in TARGETS:
             cascade.operations.read(identifier).edit(
                 update_node

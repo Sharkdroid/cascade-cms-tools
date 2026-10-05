@@ -90,7 +90,7 @@ def test_unexpected_failure_error_includes_tool_name():
 
 
 def test_unexpected_failure_error_maps_batch_error_with_cause():
-    from cascade_cms.failures import CascadeBatchError
+    from cascade_cms.utils.failures import CascadeBatchError
 
     try:
         try:
@@ -107,7 +107,7 @@ def test_unexpected_failure_error_maps_batch_error_with_cause():
 
 
 def test_single_result_accepts_chain_results():
-    from cascade_cms.failures import ChainResults
+    from cascade_cms.utils.failures import ChainResults
 
     assert single_result(ChainResults(["x"]), context="c") == "x"
 
@@ -125,7 +125,7 @@ def test_tool_errors_mask_the_api_token(monkeypatch):
 
 
 def test_batch_failure_masks_the_api_token(monkeypatch):
-    from cascade_cms.failures import CascadeBatchError
+    from cascade_cms.utils.failures import CascadeBatchError
 
     token = "sekrit-token-wxyz"
     monkeypatch.setenv("CASCADE_API_KEY", token)

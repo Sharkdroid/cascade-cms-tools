@@ -61,8 +61,12 @@ rather than looping.
 
 Four rules the validator enforces and scripts must never break:
 
-- `CascadeWrapperBase` is the only entry point — no `cascade_cms.driver`, no
-  manual asyncio event loop, no hand-built `aiohttp.ClientSession`.
+- `Cascade` (from `cascade_cms.wrapper`) is the only entry point — no
+  `cascade_cms.driver`, no manual asyncio event loop, no hand-built
+  `aiohttp.ClientSession`. `CascadeWrapperBase` survives only as an alias
+  in the package root (`from cascade_cms import ...`); `cascade_cms.wrapper`
+  no longer has it. Failure types live in `cascade_cms.utils.failures`,
+  `mask_token`/`script_log`/`to_identifiers` in `cascade_cms.utils`.
 - `Asset` fields are written by attribute (`asset.keywords = value`), never by
   subscript (`asset["keywords"] = value` raises `TypeError`).
 - Everything is type-hinted: every function parameter and return, and every

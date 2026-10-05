@@ -40,7 +40,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -73,9 +73,7 @@ def apply_edits(asset: Asset) -> Asset:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         for identifier in TARGETS:
             cascade.operations.read(identifier).edit(
                 apply_edits

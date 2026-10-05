@@ -13,13 +13,13 @@ from __future__ import annotations
 from typing import Any, cast
 
 from cascade_cms.cmstypes import Asset, AssetTypes, CascadeError, IdentifierType
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import Cascade
 
 from . import errors
 
 
 def _read(
-    cascade: CascadeWrapperBase,
+    cascade: Cascade,
     asset_id: str,
     asset_type: str,
     *,
@@ -45,7 +45,7 @@ def _read(
 
 
 def resolve_content_type(
-    asset: Asset, cascade: CascadeWrapperBase, *, context: str
+    asset: Asset, cascade: Cascade, *, context: str
 ) -> Asset:
     content_type_id = asset._data.get("contentTypeId")
     if not content_type_id:
@@ -62,7 +62,7 @@ def resolve_content_type(
 
 
 def resolve_data_definition(
-    asset: Asset, cascade: CascadeWrapperBase, *, context: str
+    asset: Asset, cascade: Cascade, *, context: str
 ) -> Asset:
     # (a) direct field - not confirmed by any fixture seen; harmless no-op if absent.
     data_definition_id = asset._data.get("dataDefinitionId")

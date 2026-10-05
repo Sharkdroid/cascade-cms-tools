@@ -12,7 +12,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class _FakeWrapper:
-    """Stands in for CascadeWrapperBase: registers operations (ignored) and
+    """Stands in for Cascade: registers operations (ignored) and
     returns a pre-baked submit_requests() result, mirroring the real
     context-manager shape."""
 
@@ -634,7 +634,7 @@ def test_wrapper_disables_exit_on_failure(monkeypatch):
 
     monkeypatch.setenv("CASCADE_API_KEY", "k")
     monkeypatch.setenv("CASCADE_URL", "https://example.test")
-    monkeypatch.setattr(server, "CascadeWrapperBase", _Spy)
+    monkeypatch.setattr(server, "Cascade", _Spy)
 
     server._wrapper()
 
@@ -650,7 +650,7 @@ def test_wrapper_missing_credentials_is_tool_error_not_system_exit(monkeypatch):
 
 
 def test_batch_error_becomes_tool_error(monkeypatch):
-    from cascade_cms.failures import CascadeBatchError
+    from cascade_cms.utils.failures import CascadeBatchError
 
     class _Broken(_FakeWrapper):
         def submit_requests(self, *args, **kwargs):
@@ -666,7 +666,7 @@ def test_batch_error_becomes_tool_error(monkeypatch):
 
 
 def test_failed_read_with_real_wrapper_is_tool_error(monkeypatch):
-    """Acceptance #10: real CascadeWrapperBase (stub driver) with
+    """Acceptance #10: real Cascade (stub driver) with
     exit_on_failure=False turns a CascadeError read into a ToolError; no
     SystemExit escapes.
 
@@ -680,7 +680,7 @@ def test_failed_read_with_real_wrapper_is_tool_error(monkeypatch):
 
     from cascade_cms import OperationLogger
     from cascade_cms.operations import Operations
-    from cascade_cms.wrapper import CascadeWrapperBase
+    from cascade_cms.wrapper import Cascade
 
     class StubDriver:
         base_url = "https://example.test/api/v1"
@@ -702,7 +702,7 @@ def test_failed_read_with_real_wrapper_is_tool_error(monkeypatch):
         driver = StubDriver(
             [[CascadeError(success=False, message="not found")]]
         )
-        wrapper = object.__new__(CascadeWrapperBase)
+        wrapper = object.__new__(Cascade)
         wrapper._driver = driver
         wrapper._logger = MagicMock(spec=OperationLogger)
         wrapper.operations = Operations(driver, _logger=wrapper._logger)
@@ -787,7 +787,7 @@ def test_wrapper_passes_log_dir_and_creates_no_local_logs(
     def fake(*args, **kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(server, "CascadeWrapperBase", fake)
+    monkeypatch.setattr(server, "Cascade", fake)
 
     server._wrapper()
 

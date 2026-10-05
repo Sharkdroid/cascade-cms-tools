@@ -128,8 +128,8 @@ FORBIDDEN_DRIVER_NAMES = {
 # the called attribute name rather than a specific import alias, so this still
 # catches `import asyncio as aio; aio.new_event_loop()`.
 FORBIDDEN_LOOP_SESSION_CALLS = {
-    "new_event_loop": "creates a raw event loop — CascadeWrapperBase owns the loop for the session's lifetime",
-    "set_event_loop": "reassigns the running event loop — CascadeWrapperBase already does this internally",
+    "new_event_loop": "creates a raw event loop — Cascade owns the loop for the session's lifetime",
+    "set_event_loop": "reassigns the running event loop — Cascade already does this internally",
     "run_until_complete": "drives the loop manually — use cascade.submit_requests() instead",
     "get_event_loop": "reaches for the loop directly — not needed outside the wrapper",
 }
@@ -138,7 +138,7 @@ FORBIDDEN_SESSION_CONSTRUCTORS = {"ClientSession"}
 
 def check_wrapper_only(tree: ast.Module, path: str):
     """Level 2: fail if the script touches cascade_cms.driver directly, OR
-    manually manages an event loop / HTTP session. CascadeWrapperBase must be
+    manually manages an event loop / HTTP session. Cascade must be
     the sole entry point — any of these bypass logger wiring, the callback
     execution path, and session/event-loop cleanup."""
     violations = []
@@ -156,7 +156,7 @@ def check_wrapper_only(tree: ast.Module, path: str):
                     if alias.name in FORBIDDEN_DRIVER_NAMES:
                         violations.append(
                             f"line {node.lineno}: imports '{alias.name}' directly — "
-                            f"driver internals must not be used outside CascadeWrapperBase"
+                            f"driver internals must not be used outside Cascade"
                         )
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -182,14 +182,14 @@ def check_wrapper_only(tree: ast.Module, path: str):
             if called_name in FORBIDDEN_SESSION_CONSTRUCTORS:
                 violations.append(
                     f"line {node.lineno}: constructs '{called_name}(...)' directly — "
-                    f"CascadeWrapperBase/driver owns the HTTP session; scripts should never open their own"
+                    f"Cascade/driver owns the HTTP session; scripts should never open their own"
                 )
 
     if violations:
-        print("[WRAPPER-ONLY ERROR] Script bypasses CascadeWrapperBase:")
+        print("[WRAPPER-ONLY ERROR] Script bypasses Cascade:")
         for v in sorted(set(violations)):
             print(f"  - {v}")
-        print("  Fix: use only CascadeWrapperBase + cascade.operations.<op>(...) + cascade.submit_requests(...)")
+        print("  Fix: use only Cascade + cascade.operations.<op>(...) + cascade.submit_requests(...)")
         sys.exit(1)
     print("[OK] Wrapper-only check passed — no direct driver usage")
 
@@ -199,7 +199,7 @@ def _load_modules():
     try:
         import cascade_cms.cmstypes as cmstypes
         import cascade_cms.driver as driver
-        import cascade_cms.failures as failures
+        import cascade_cms.utils.failures as failures
         import cascade_cms.operations as operations
         import cascade_cms.wrapper as wrapper
     except Exception as e:
@@ -210,7 +210,7 @@ def _load_modules():
         "cascade_cms.operations": operations,
         "cascade_cms.wrapper": wrapper,
         "cascade_cms.driver": driver,
-        "cascade_cms.failures": failures,
+        "cascade_cms.utils.failures": failures,
     }
 
 

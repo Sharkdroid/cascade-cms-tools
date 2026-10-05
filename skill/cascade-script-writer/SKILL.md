@@ -192,7 +192,7 @@ resolved paths. Mark every written field UNVERIFIED in Step 7 until one of
 those confirms it.
 
 **Step 4 — Edit the script** for the specific task. Keep the template's
-structure: config block, `main()`, `with CascadeWrapperBase(...)`, one
+structure: config block, `main()`, `with Cascade(...)`, one
 `submit_requests()` per batch. Keep every function, parameter and module-level
 variable **type-hinted** and every line **60 characters or fewer** — see
 "Script conventions" below. Templates already comply; your edits must too.
@@ -295,7 +295,7 @@ Append DELIVERED to the session log and close it.
 [ ] First write stage read back via the MCP to confirm the value landed
 [ ] Schema checked for gate radio buttons (show-fields) and required
     siblings of each written field; user told to check the rendered page
-[ ] Only CascadeWrapperBase used — no driver, no event loop, no ClientSession
+[ ] Only `Cascade` used — no driver, no event loop, no ClientSession
 [ ] Asset writes use attribute assignment, not asset["x"] = ...
 [ ] Path built as Path(site_name=..., asset_type=...), not a dict
 [ ] No try/except or isinstance() around submit_requests()
@@ -439,7 +439,7 @@ if first.failed:
 **A batch that breaks raises `CascadeBatchError`** (chained to the
 original exception) instead of returning `[]`; with the default
 `exit_on_failure=True` the wrapper logs it and exits 1 without a
-traceback. Import it from `cascade_cms.failures` only if you need it.
+traceback. Import it from `cascade_cms.utils.failures` only if you need it.
 `ChainResults`, `ChainFailure` and `CascadeBatchError` also live there;
 they are not exported from `cascade_cms`.
 
@@ -782,7 +782,7 @@ import os
 
 from cascade_cms.cmstypes import Asset
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -799,7 +799,7 @@ def report(result: Asset) -> None:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
+    with Cascade(
         environment_variables
     ) as cascade:
         cascade.operations.read(...).then(report)
@@ -833,7 +833,7 @@ pull long f-string pieces into a local variable). The validator fails on
 any line over 60 characters and runs `ruff format --check` with the same
 flags when `ruff` is installed. (The old 150-character limit is retired.)
 
-**`CascadeWrapperBase` is the only entry point.** Never import
+**`Cascade` is the only entry point.** Never import
 `cascade_cms.driver` or anything from it (`CascadeCMSRestDriver`,
 `RequestExecutor`), never touch the event loop
 (`new_event_loop`, `set_event_loop`, `run_until_complete`, `get_event_loop`),
@@ -899,7 +899,7 @@ payloads: list[NewAsset] = [
     for row in rows
 ]
 
-with CascadeWrapperBase(
+with Cascade(
     environment_variables
 ) as cascade:
     # One create() per payload gives one chain per asset.
@@ -915,7 +915,7 @@ with CascadeWrapperBase(
 ### Read, modify, save
 
 ```python
-with CascadeWrapperBase(
+with Cascade(
     environment_variables
 ) as cascade:
     cascade.operations.read(targets)
@@ -938,7 +938,7 @@ with CascadeWrapperBase(
 ### Workflow transition
 
 ```python
-with CascadeWrapperBase(
+with Cascade(
     environment_variables
 ) as cascade:
     cascade.operations.readWorkflowInformation(target)

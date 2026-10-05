@@ -21,7 +21,7 @@ from cascade_cms.cmstypes import (
     SearchInformation,
 )
 from cascade_cms.cmstypes import Path as CascadePath
-from cascade_cms.wrapper import CascadeWrapperBase
+from cascade_cms.wrapper import Cascade
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -47,8 +47,8 @@ mcp = MCPServer(
 )
 
 
-def _wrapper() -> CascadeWrapperBase:
-    """A fresh CascadeWrapperBase per tool call.
+def _wrapper() -> Cascade:
+    """A fresh Cascade per tool call.
 
     CascadeCMSRestDriver owns a private, non-reentrant asyncio event loop per
     instance, and MCPServer can dispatch concurrent sync tool calls onto
@@ -56,7 +56,7 @@ def _wrapper() -> CascadeWrapperBase:
     race. exit_on_failure=False keeps the library from raising SystemExit
     at `with` exit; failures surface as values or CascadeBatchError. This also matches every existing precedent in the repo (README,
     skill templates, tests/edit_test.py): a short-lived `with
-    CascadeWrapperBase(...) as cascade:` block per unit of work. Log
+    Cascade(...) as cascade:` block per unit of work. Log
     files go to a stable per-user directory (see config.log_directory),
     not the launch directory.
     """
@@ -65,7 +65,7 @@ def _wrapper() -> CascadeWrapperBase:
     except SystemExit as exc:
         # SystemExit is not an Exception and must never escape a tool call.
         raise ToolError(str(exc)) from exc
-    return CascadeWrapperBase(
+    return Cascade(
         environment, exit_on_failure=False, log_dir=log_directory()
     )
 

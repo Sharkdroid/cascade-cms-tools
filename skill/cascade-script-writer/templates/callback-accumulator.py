@@ -18,7 +18,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -53,9 +53,7 @@ def tally_by_type(result: Asset) -> None:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read(TARGETS).then(tally_by_type)
 
         cascade.submit_requests(Asset)

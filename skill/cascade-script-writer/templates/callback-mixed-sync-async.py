@@ -16,7 +16,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -58,9 +58,7 @@ async def ship_summary(
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read(TARGETS).then(
             [stamp_summary, ship_summary]
         )

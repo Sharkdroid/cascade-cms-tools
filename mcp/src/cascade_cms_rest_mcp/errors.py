@@ -10,8 +10,8 @@ import os
 from typing import Any
 
 from cascade_cms.cmstypes import Asset, CascadeError, IdentifierType, Path
-from cascade_cms.failures import CascadeBatchError
-from cascade_cms.utils.redaction import mask_token
+from cascade_cms.utils import mask_token
+from cascade_cms.utils.failures import CascadeBatchError
 from mcp.server.mcpserver.exceptions import ToolError
 
 from . import security

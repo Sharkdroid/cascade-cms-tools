@@ -14,7 +14,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -61,9 +61,7 @@ def report(result: Asset) -> None:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read(TARGETS).then(
             log_read
         ).then([normalize_keywords, report])

@@ -14,7 +14,7 @@ from cascade_cms.cmstypes import (
     workflowTransitionInformation,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -43,9 +43,7 @@ def build_transition(
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.readWorkflowInformation(TARGET)
 
         infos = cascade.submit_requests(workflowInformation)

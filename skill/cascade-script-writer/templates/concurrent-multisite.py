@@ -15,7 +15,7 @@ from cascade_cms.cmstypes import (
     SearchInformation,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -33,9 +33,7 @@ SEARCH_TYPES: list[AssetTypes] = ["page"]
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         for site in SITES:
             cascade.operations.search(
                 SearchInformation(

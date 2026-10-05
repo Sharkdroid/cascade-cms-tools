@@ -18,7 +18,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -52,9 +52,7 @@ def report_progress(result: Asset) -> None:
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read(TARGETS).then(
             report_progress
         )

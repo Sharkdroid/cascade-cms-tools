@@ -26,7 +26,7 @@ from cascade_cms.cmstypes import (
     IdentifierType,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -47,9 +47,7 @@ TARGETS: list[IdentifierType] = [
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         # Submit 1: read and hold the assets.
         cascade.operations.read(TARGETS)
         read_results = cascade.submit_requests(Asset)

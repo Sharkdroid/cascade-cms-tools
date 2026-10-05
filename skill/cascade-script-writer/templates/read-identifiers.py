@@ -12,7 +12,7 @@ from cascade_cms.cmstypes import (
     Path,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -41,9 +41,7 @@ BY_PATH: Path = Path(
 
 
 def main() -> None:
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         cascade.operations.read([BY_ID, BY_PATH])
 
         results = cascade.submit_requests(Asset)

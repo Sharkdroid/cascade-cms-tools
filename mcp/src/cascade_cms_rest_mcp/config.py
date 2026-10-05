@@ -1,4 +1,4 @@
-"""Environment/config wiring for the MCP server, matching CascadeWrapperBase's
+"""Environment/config wiring for the MCP server, matching Cascade's
 existing expectations exactly - no new credential-naming surface.
 """
 

@@ -25,9 +25,9 @@ from cascade_cms.cmstypes import (
     AssetTypes,
     IdentifierType,
 )
-from cascade_cms.failures import ChainResults
+from cascade_cms.utils.failures import ChainResults
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -75,9 +75,7 @@ def unseen(
 
 def main() -> None:
     memo: dict[str, Asset] = {}
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         # Submit 1: the pages.
         cascade.operations.read(PAGES)
         page_results = cascade.submit_requests(Asset)

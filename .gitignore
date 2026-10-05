@@ -39,3 +39,6 @@ mcp/tests/output.txt
 
 # Handoff notes (keep out of repo and release bundles)
 handoff*.txt
+
+# Local library snapshots (handed over in lieu of a PyPI release)
+py-cascade-cms.zip

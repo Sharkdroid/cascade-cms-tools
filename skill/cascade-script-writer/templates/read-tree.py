@@ -18,7 +18,7 @@ import uuid
 from cascade_cms.cmstypes import Asset, IdentifierType
 from cascade_cms.utils import to_identifiers
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -55,9 +55,7 @@ def main() -> None:
     level: list[IdentifierType] = [ROOT]
     depth = 0
 
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         while level:  # barrier: per level
             if depth >= MAX_DEPTH:
                 break

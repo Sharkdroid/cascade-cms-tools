@@ -20,7 +20,7 @@ from cascade_cms.cmstypes import (
     NewAsset,
 )
 from cascade_cms.wrapper import (
-    CascadeWrapperBase,
+    Cascade,
     EnvironmentVars,
 )
 
@@ -80,9 +80,7 @@ def main() -> None:
         print("No rows.")
         return
 
-    with CascadeWrapperBase(
-        environment_variables
-    ) as cascade:
+    with Cascade(environment_variables) as cascade:
         # One create() per payload: each becomes its own
         # chain. A single create(payloads) list is ONE
         # chain whose result is a list.

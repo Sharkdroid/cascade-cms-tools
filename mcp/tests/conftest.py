@@ -10,7 +10,7 @@ import pytest
 
 
 class SequentialFakeWrapper:
-    """Stands in for CascadeWrapperBase across a MULTI-hop resolution chain:
+    """Stands in for Cascade across a MULTI-hop resolution chain:
     each submit_requests() call returns the next pre-baked result in order,
     mirroring how resolution.py reuses one wrapper/cascade for several
     sequential reads within a single tool call."""
