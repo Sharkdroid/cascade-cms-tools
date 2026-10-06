@@ -6,6 +6,8 @@ Tooling built on top of `cascade-cms-rest`
 (the Hannon Hill Cascade CMS REST client library) — kept in its own repo so
 the library itself stays a clean, dependency-light package.
 
+> Installation guide: [installation-guide](./docs/setup.md)
+
 | Directory | What it is |
 |---|---|
 | [`mcp/`](mcp/) | A local, read-only MCP server exposing a Cascade CMS server to MCP clients (Claude Desktop, Claude Code, etc.) |
