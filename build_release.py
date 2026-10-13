@@ -143,6 +143,7 @@ def write_security_gate() -> None:
             {
                 "blocked": sorted(security.BLOCKED_ASSET_TYPES),
                 "allowed": sorted(security.ALLOWED_ASSET_TYPES),
+                "masked_fields": sorted(security.MASKED_FIELDS),
             },
             indent=2,
         )

@@ -72,9 +72,10 @@ def blocked_asset_type_error(asset_type: str, *, context: str) -> ToolError:
     if security.is_asset_type_blocked(asset_type):
         return _tool_error(
             f"{context}: asset type '{asset_type}' is not accessible via this server. "
-            "Access to users, groups, roles, and messages is restricted to protect "
-            "confidential information (usernames, hashed passwords, permission "
-            "matrices). If you need to work with permissions or user management, "
+            "Access to users, groups, roles, messages, and audit/activity records "
+            "is restricted to protect confidential information (usernames, hashed "
+            "passwords, permission matrices, who did what). If you need to work "
+            "with permissions or user management, "
             "describe the requirement to the user and ask them to handle it "
             "manually rather than through this tool."
         )
@@ -83,6 +84,16 @@ def blocked_asset_type_error(asset_type: str, *, context: str) -> ToolError:
         "server's allowlist. If this is a real Cascade asset type that should be "
         "accessible, it needs to be added to ALLOWED_ASSET_TYPES in "
         "cascade_cms_rest_mcp/security.py."
+    )
+
+
+def guarded_search_term_error(term: str, *, context: str) -> ToolError:
+    return _tool_error(
+        f"{context}: '{term}' is not an allowed search term. Searching for "
+        "users, groups, roles, messages, audit/activity records, or identity "
+        "fields such as createdBy/lastModifiedBy is restricted to protect "
+        "confidential information. Search for content (names, titles, text) "
+        "instead."
     )
 
 

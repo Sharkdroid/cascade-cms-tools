@@ -91,7 +91,9 @@ def cascade_search(
     """Search a Cascade site for assets by text; returns id/type/path/name per match.
 
     limit: max matches returned; default 50, clamped to 1..200. Results of
-    blocked or unsupported asset types are dropped (filtered_count says how many).
+    blocked asset types are dropped silently; unsupported ones are dropped
+    and counted in filtered_count. A query that is just a restricted term
+    (a blocked type such as "users", or a field like "createdBy") is refused.
 
     total_count/has_more describe what Cascade returned in THIS response, not
     a true site-wide match count - Cascade's search API exposes no such count.
@@ -107,6 +109,10 @@ def cascade_search(
                 raise errors.blocked_asset_type_error(
                     asset_type, context="cascade_search"
                 )
+        if security.is_guarded_term(query):
+            raise errors.guarded_search_term_error(
+                query, context="cascade_search"
+            )
         payload = SearchInformation(
             site_name=site,
             search_terms=query,
@@ -139,7 +145,12 @@ def cascade_read_asset(
     """Read a single Cascade asset by id+type, or by site+path+type.
 
     format="concise" (default): large/nested fields come back collapsed with
-    an expand_with hint. format="detailed": the raw asset payload, unmodified.
+    an expand_with hint. format="detailed": the full asset payload.
+
+    In both formats, identity fields (createdBy, lastModifiedBy,
+    lastPublishedBy, author, users/groups lists, ...) are deliberately
+    returned as "[REDACTED]" to protect user and group names; this is
+    not a failed read, and the real values are not available here.
     """
     try:
         _guard_asset_type(identifier, context="cascade_read_asset")
@@ -186,6 +197,10 @@ def cascade_query_asset(
     expand_with hint is a concrete, ready-to-run follow-up query. A query
     that matches nothing returns an empty matches list, not an error.
 
+    Identity fields come back as "[REDACTED]" (deliberate, as in
+    cascade_read_asset), and matches that reference a user/group/role
+    are left out.
+
     limit: max items returned; default 50, clamped to 1..200.
     """
     try:
@@ -209,7 +224,9 @@ def cascade_query_asset(
                 query, str(exc), context="cascade_query_asset"
             ) from exc
 
-        matches = query_module.evaluate(result._data, steps)
+        matches = query_module.evaluate(
+            security.mask_asset(result._data, result.internal_type), steps
+        )
         return formatting.format_query_result(matches, format=format, limit=limit)
     except ToolError:
         raise
@@ -450,6 +467,9 @@ def cascade_root_container_id(
     can't be built.
     """
     try:
+        _guard_asset_type(
+            site_identifier, context="cascade_root_container_id"
+        )
         with _wrapper() as cascade:
             cascade.operations.read(site_identifier)
             result = errors.single_result(

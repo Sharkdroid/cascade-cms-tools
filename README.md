@@ -72,12 +72,27 @@ model-capability floor this tooling assumes and free-vs-paid guidance.
 
 Both the MCP server and the skill validator enforce the same asset-type
 allowlist (`mcp/src/cascade_cms_rest_mcp/security.py`, copied into the skill
-bundle at build time): `user`, `group`, `role`, and `message` assets are
-blocked, fail-closed, at both layers. This protects confidential information
-— usernames, hashed passwords, permission matrices — that these asset types
-can carry. An asset type this tooling doesn't yet know about is blocked by
-default too, rather than allowed by default, until someone deliberately adds
-it to the allowlist.
+bundle at build time): `user`, `group`, `role`, `message`, and
+`audit`/`activity` assets are blocked, fail-closed, at both layers
+(plural forms such as `users` count as the same type). This protects
+confidential information — usernames, hashed passwords, permission
+matrices, who did what — that these asset types can carry. An asset type
+this tooling doesn't yet know about is blocked by default too, rather than
+allowed by default, until someone deliberately adds it to the allowlist.
+
+The MCP server also guards the data it returns, not just the asset type:
+
+- Identity fields (`createdBy`, `lastModifiedBy`, `lastPublishedBy`, `modifiedBy`, `users`, `groups`, `applicableGroupNames`, `author`,
+  `owner`, `reviewer`, at any depth) come back as `[REDACTED]` from
+  `cascade_read_asset` and `cascade_query_asset`, so `find("createdBy")`
+  finds the key but not the value.
+- A workflow definition's `xml` comes back `[REDACTED]` as a whole, since
+  it names recipient, assigned and default groups.
+- Query matches that are references to a blocked type (for example a
+  `{"type": "user"}` access-rights entry) are dropped before the caller
+  sees them.
+- `cascade_search` refuses a blocked type or identity field used as the
+  search query, and does not report how many guarded results it dropped.
 
 This is not a claim that the tooling covers every Cascade feature. Operations
 that exist in the library but aren't wrapped by a template or an MCP tool
@@ -98,3 +113,80 @@ mypy mcp/src/
 
 See `AGENTS.md` for the skill-authoring workflow and how to rebuild the
 skill release bundle (`python build_release.py`).
+
+## Credentials
+
+### Prerequisites
+
+Install uv (provides `uvx`):
+
+**Linux / WSL**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Claude Code must be installed, and the `claude` command must be available on your PATH.
+
+### Scopes
+
+Claude Code stores the entry in one of two places. The script uses one of them:
+
+| Option | Where it applies | Stored in |
+|---|---|---|
+| `user` (default) | All projects | `~/.claude.json` |
+| `local` | Only the folder you run the script from | `~/.claude.json`, under that folder's entry |
+
+Run the script from the same folder you use when you launch Claude Code. With `local`, that folder is the one the entry is tied to.
+
+### First install and credential rotation
+
+Run this from the `cascade-cms-tools` folder:
+
+```bash
+python scripts/cascade_creds.py
+```
+
+1. Enter the Cascade URL, or press Enter to keep the current value.
+2. Enter your Cascade API key. Input is hidden.
+3. Done. The script prints `Credentials updated (user scope).`
+
+For a project-only entry, use `--scope local` from that project's folder:
+
+```bash
+python scripts/cascade_creds.py --scope local
+```
+
+If the script prints an error, fix the issue shown and run it again.
+
+### Manual fallback
+
+Use these steps if the script cannot run. Replace the placeholder values with your own.
+
+User scope:
+
+```bash
+claude mcp remove cascade-cms -s user
+claude mcp add cascade-cms -s user \
+  -e CASCADE_API_KEY=<API_key> \
+  -e CASCADE_URL=<cascade-url> \
+  -- uvx --no-cache cascade-cms-rest-mcp
+```
+
+Local scope (run from the project folder):
+
+```bash
+claude mcp remove cascade-cms -s local
+claude mcp add cascade-cms -s local \
+  -e CASCADE_API_KEY=<API_key> \
+  -e CASCADE_URL=<cascade-url> \
+  -- uvx --no-cache cascade-cms-rest-mcp
+```
+
+Or edit the `cascade-cms` entry in `~/.claude.json`: under `mcpServers` for user scope, or under `projects` → your folder → `mcpServers` for local scope. On Windows, the file is at `%USERPROFILE%\.claude.json`.

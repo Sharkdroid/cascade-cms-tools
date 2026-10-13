@@ -78,10 +78,19 @@ def _collapse_value(key: str, value: Any) -> Any:
 def format_asset(
     asset: Asset, *, format: Literal["concise", "detailed"]
 ) -> dict[str, Any]:
+    data = security.mask_asset(asset._data, asset.internal_type)
     if format == "detailed":
-        return dict(asset._data)
-    collapsed = {key: _collapse_value(key, value) for key, value in asset._data.items()}
-    references = find_references(asset._data)
+        return dict(data)
+    collapsed = {key: _collapse_value(key, value) for key, value in data.items()}
+    references = {
+        name: ref
+        for name, ref in find_references(data).items()
+        if not (
+            ref["asset_type"]
+            and security.is_asset_type_blocked(ref["asset_type"])
+        )
+        and not security.is_asset_type_blocked(name)
+    }
     if references:
         collapsed["_references"] = references
     return collapsed
@@ -115,6 +124,13 @@ def format_query_result(
     format: Literal["concise", "detailed"],
     limit: int | None = None,
 ) -> dict[str, Any]:
+    # Matches that are references to blocked types (e.g. a user entry in
+    # accessRights) never reach the caller; nested ones are pruned out.
+    matches = [
+        query.Match(path=m.path, value=security.prune_guarded_references(m.value))
+        for m in matches
+        if not security.is_guarded_reference(m.value)
+    ]
     truncated = matches[: clamp_limit(limit)]
     if format == "detailed":
         shaped = [{"path": m.path, "value": m.value} for m in truncated]
@@ -173,7 +189,14 @@ def format_search_results(
         "total_count": len(permitted),
         "has_more": len(permitted) > limit,
     }
-    dropped = len(identifiers) - len(permitted)
+    # Guarded (blocked-type) hits are dropped silently: counting them
+    # would reveal how many users/groups/roles matched the query.
+    dropped = sum(
+        1
+        for e in identifiers
+        if not security.is_asset_type_allowed(str(e.get_type))
+        and not security.is_asset_type_blocked(str(e.get_type))
+    )
     if dropped:
         result["filtered_count"] = dropped
     return result

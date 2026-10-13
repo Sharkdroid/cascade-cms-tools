@@ -760,7 +760,7 @@ def test_cascade_search_filters_blocked_results(patch_wrapper):
     result = server.cascade_search(query="x", site="s")
 
     assert result["total_count"] == 1
-    assert result["filtered_count"] == 1
+    assert "filtered_count" not in result
 
 
 @pytest.mark.parametrize(
@@ -794,3 +794,97 @@ def test_wrapper_passes_log_dir_and_creates_no_local_logs(
     assert captured["log_dir"] == tmp_path / "logs-elsewhere"
     assert captured["exit_on_failure"] is False
     assert not (tmp_path / "logs").exists()
+
+
+@pytest.mark.parametrize("asset_type", ["users", "audit", "activity"])
+def test_cascade_search_rejects_guarded_asset_type_aliases(
+    patch_wrapper, asset_type
+):
+    patch_wrapper([])
+
+    with pytest.raises(ToolError, match="not accessible"):
+        server.cascade_search(query="x", site="s", asset_types=[asset_type])
+
+
+@pytest.mark.parametrize("term", ["createdBy", "lastModifiedBy", "users"])
+def test_cascade_search_rejects_guarded_terms_before_request(
+    patch_wrapper, term
+):
+    patch_wrapper([])
+
+    with pytest.raises(ToolError, match="not an allowed search term"):
+        server.cascade_search(query=term, site="s")
+
+
+def test_cascade_read_asset_masks_identity_fields(patch_wrapper):
+    raw = {"id": "abc", "createdBy": "alice", "lastModifiedBy": "bob"}
+    patch_wrapper([Asset({"asset": {"page": raw}})])
+
+    result = server.cascade_read_asset(
+        identifier=_identifier(), format="detailed"
+    )
+
+    assert result["createdBy"] == "[REDACTED]"
+    assert result["lastModifiedBy"] == "[REDACTED]"
+
+
+def test_cascade_query_asset_find_identity_field_is_redacted(patch_wrapper):
+    raw = {"id": "abc", "createdBy": "alice", "metadata": {"author": "bob"}}
+    patch_wrapper([Asset({"asset": {"page": raw}})])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(), query='find("createdBy")'
+    )
+    nested = server.cascade_query_asset(
+        identifier=_identifier(), query='find("author")'
+    )
+
+    assert [m["value"] for m in result["matches"]] == ["[REDACTED]"]
+    assert [m["value"] for m in nested["matches"]] == ["[REDACTED]"]
+
+
+def test_cascade_query_asset_drops_user_references(patch_wrapper):
+    raw = {
+        "id": "abc",
+        "accessRights": [{"type": "user", "name": "bob"}],
+    }
+    patch_wrapper([Asset({"asset": {"page": raw}})])
+
+    result = server.cascade_query_asset(
+        identifier=_identifier(),
+        query="accessRights[0]",
+        format="detailed",
+    )
+
+    assert result["matches"] == []
+
+
+@pytest.mark.parametrize("asset_type", ["user", "group", "role"])
+def test_cascade_root_container_id_blocks_sensitive_types_before_request(
+    patch_wrapper, asset_type
+):
+    patch_wrapper([])
+    identifier = IdentifierType(
+        identifier=uuid.uuid4(), asset_type=asset_type
+    )
+
+    with pytest.raises(ToolError, match="not accessible"):
+        server.cascade_root_container_id(
+            site_identifier=identifier, asset_type="folder"
+        )
+
+
+def test_workflow_definition_xml_is_redacted(patch_wrapper):
+    raw = {"id": "abc", "name": "PIO", "xml": "<system-workflow-definition/>"}
+    asset = Asset({"asset": {"workflowDefinition": raw}})
+    patch_wrapper([asset, asset])
+    identifier = IdentifierType(
+        identifier=uuid.uuid4(), asset_type="workflowdefinition"
+    )
+
+    read = server.cascade_read_asset(identifier=identifier, format="detailed")
+    query = server.cascade_query_asset(identifier=identifier, query="xml")
+
+    assert read["xml"] == "[REDACTED]"
+    assert read["name"] == "PIO"
+    assert [m["value"] for m in query["matches"]] == ["[REDACTED]"]

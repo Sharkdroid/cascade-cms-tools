@@ -44,6 +44,23 @@ read-only by design: *writing* structured data still goes through the
 skill's script-writing path (see its `callback-structured-data-edit.py`
 template).
 
+## Security
+
+All tools are read-only and fail closed:
+
+- `user`, `group`, `role`, `message` and `audit`/`activity` assets (and their
+  plural forms) are refused as input and dropped from search results; any
+  other type not on the allowlist in `security.py` is refused too.
+- Identity fields (`createdBy`, `lastModifiedBy`, `lastPublishedBy`, `modifiedBy`, `users`, `groups`, `applicableGroupNames`, `author`,
+  `owner`, `reviewer`) are returned as `[REDACTED]` at any depth, including
+  through `cascade_query_asset` (`find("createdBy")`).
+- A workflow definition's `xml` comes back `[REDACTED]` as a whole, since
+  it names recipient, assigned and default groups.
+- Query matches that reference a blocked type (e.g. a `user` access-rights
+  entry) are dropped.
+- `cascade_search` rejects those terms as the query and does not count the
+  guarded results it drops.
+
 ## Known limitation
 
 `resolve_data_definition()` (`src/cascade_cms_rest_mcp/resolution.py`)

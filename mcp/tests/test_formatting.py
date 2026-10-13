@@ -130,7 +130,63 @@ def test_format_asset_detailed_returns_raw_data_unmodified():
 
     assert result == raw
     assert result is not raw  # dict(...) copy, not the same object
-    assert result["metadata"] is raw["metadata"]  # nested values still by reference
+    # masking deep-copies, so the caller's payload is never shared or mutated
+    assert result["metadata"] is not raw["metadata"]
+
+
+def test_format_asset_masks_identity_fields_in_both_formats():
+    raw = {
+        "id": "abc",
+        "createdBy": "alice",
+        "lastModifiedBy": "bob",
+        "metadata": {"author": "carol", "title": "T"},
+    }
+    asset = _asset(raw)
+
+    detailed = format_asset(asset, format="detailed")
+    concise = format_asset(asset, format="concise")
+
+    assert detailed["createdBy"] == "[REDACTED]"
+    assert detailed["lastModifiedBy"] == "[REDACTED]"
+    assert detailed["metadata"] == {"author": "[REDACTED]", "title": "T"}
+    assert concise["createdBy"] == "[REDACTED]"
+    assert concise["lastModifiedBy"] == "[REDACTED]"
+    assert raw["createdBy"] == "alice"  # source untouched
+
+
+def test_format_asset_references_omit_blocked_types():
+    asset = _asset(
+        {
+            "userId": "u1",
+            "userPath": "/u",
+            "groupId": "g1",
+            "groupName": "g",
+            "contentTypeId": "c1",
+            "contentTypePath": "/c",
+        }
+    )
+
+    refs = format_asset(asset, format="concise")["_references"]
+
+    assert set(refs) == {"contentType"}
+
+
+def test_format_query_result_drops_user_references():
+    from cascade_cms_rest_mcp.formatting import format_query_result
+    from cascade_cms_rest_mcp.query import Match
+
+    matches = [
+        Match("$.a", {"type": "user", "name": "bob"}),
+        Match("$.b", {"type": "group", "name": "staff"}),
+        Match("$.c", {"level": "read", "n": [{"type": "User"}, {"type": "page"}]}),
+        Match("$.d", "plain"),
+    ]
+
+    result = format_query_result(matches, format="detailed")
+
+    assert [m["path"] for m in result["matches"]] == ["$.c", "$.d"]
+    assert result["matches"][0]["value"]["n"] == [{"type": "page"}]
+    assert result["total_count"] == 2
 
 
 def test_name_from_path_normal():
@@ -246,7 +302,7 @@ def test_clamp_limit():
     assert clamp_limit(500) == 200
 
 
-def test_search_results_drop_blocked_types_and_report_count():
+def test_search_results_drop_blocked_types_without_counting_them():
     def raw(asset_type):
         return {
             "id": str(uuid.uuid4()),
@@ -261,7 +317,7 @@ def test_search_results_drop_blocked_types_and_report_count():
     result = format_search_results(elements)
 
     assert result["total_count"] == 1
-    assert result["filtered_count"] == 2
+    assert "filtered_count" not in result  # would leak guarded hit count
     assert result["has_more"] is False
 
 
