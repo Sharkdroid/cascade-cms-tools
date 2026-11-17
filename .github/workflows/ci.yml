@@ -21,7 +21,9 @@ jobs:
       - name: Install package
         run: pip install -e "./mcp[dev]"
       - name: Lint
-        run: ruff check .
+        # Exception: script/cascade_creds.py is a standalone, stdlib-only
+        # helper outside the lint rules applied to library code.
+        run: ruff check . --extend-exclude script/cascade_creds.py
       - name: Type check
         run: mypy mcp/src/
       - name: Test
