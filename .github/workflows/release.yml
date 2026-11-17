@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13.18"
       - name: Install package
         run: pip install -e "./mcp[dev]"
 
@@ -36,7 +36,9 @@ jobs:
           mv /tmp/latest-bundle/cascade-cms-tools/skill/cascade-script-writer skill/
 
       - name: Lint
-        run: ruff check .
+        # Exception: script/cascade_creds.py is a standalone, stdlib-only
+        # helper outside the lint rules applied to library code.
+        run: ruff check . --extend-exclude script/cascade_creds.py
       - name: Type check
         run: mypy mcp/src/
       - name: Test
@@ -87,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13.18"
       - name: Build mcp/ package
         run: |
           pip install build

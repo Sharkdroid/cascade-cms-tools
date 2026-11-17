@@ -42,6 +42,13 @@ Checks, each gating the next:
  16. get_data_structure - warns when <x>.get_data_structure(...) has no
                           direct= keyword (a nested group's same-named
                           field can be returned). Exit code stays 0.
+ 17. Private access    - ERROR on any ._name attribute (single underscore,
+                          not dunder), and on getattr/setattr/hasattr with
+                          a "_name" string. Derive asset types from
+                          IdentifierType.asset_type instead of
+                          Asset._asset_type. Accessor-root ._data reads
+                          are left to levels 11 and 15. `self._x` is
+                          exempt.
 
 Usage:
     python validate_script.py path/to/generated_script.py
@@ -1012,6 +1019,73 @@ def check_accessor_root_private_access(tree: ast.Module) -> None:
     )
 
 
+def _is_private_name(name: str) -> bool:
+    """True for `_name`; dunders such as `__init__` are not private."""
+    return name.startswith("_") and not (
+        name.startswith("__") and name.endswith("__")
+    )
+
+
+def _accessor_data_reads(tree: ast.Module) -> set[int]:
+    """ids of `._data` nodes already reported by levels 11/15, so the
+    private check does not report the same read twice."""
+    skip: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+            if node.slice.value in ACCESSOR_ROOT_RULES and isinstance(
+                node.value, ast.Attribute
+            ):
+                skip.add(id(node.value))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and node.args[0].value.split(".")[0] in ACCESSOR_ROOT_RULES
+        ):
+            skip.add(id(node.func.value))
+    return skip
+
+
+def check_private_attribute_access(tree: ast.Module) -> None:
+    """Level 17: ERROR on private (`_name`) attribute access, such as
+    `asset._asset_type`. Private names are not part of the public API
+    and change without notice. Get an asset's type from the
+    IdentifierType you read or created it with (`asset_type`).
+    `self._helper` is exempt: it is a script's own method or field."""
+    skip = _accessor_data_reads(tree)
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and id(node) not in skip
+            and not (isinstance(node.value, ast.Name) and node.value.id == "self")
+            and _is_private_name(node.attr)
+        ):
+            found.append((node.lineno, node.attr))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("getattr", "setattr", "hasattr")
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+            and _is_private_name(node.args[1].value)
+        ):
+            found.append((node.lineno, node.args[1].value))
+    for line, name in sorted(set(found)):
+        print(
+            f"[PRIVATE ERROR] line {line}: `{name}` is a private "
+            "attribute. Derive the asset type from "
+            "IdentifierType.asset_type instead."
+        )
+    if found:
+        sys.exit(1)
+    print("[OK] Private attribute check passed")
+
+
 def check_get_data_structure_direct(tree: ast.Module) -> None:
     """Level 16: WARN on <x>.get_data_structure(...) with no
     direct= keyword. The default search is depth-first, so it can
@@ -1066,6 +1140,7 @@ def main():
     check_accessor_root_assignment(tree)
     check_accessor_root_private_access(tree)
     check_get_data_structure_direct(tree)
+    check_private_attribute_access(tree)
 
     print("\nAll static checks passed. No network calls were made.")
 

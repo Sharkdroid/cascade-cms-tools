@@ -165,6 +165,19 @@ python scripts/cascade_creds.py --scope local
 
 If the script prints an error, fix the issue shown and run it again.
 
+### Multiple instances (prod and apptest)
+
+Use `--name` to pick which MCP entry to update. The default is `cascade-cms`.
+
+```bash
+python scripts/cascade_creds.py --name cascade-cms-prod
+python scripts/cascade_creds.py --name cascade-cms-apptest
+```
+
+If another entry in the same scope already uses the Cascade URL you enter, the script warns and asks `Continue anyway? [y/N]`.
+
+To read a Claude config file somewhere other than `~/.claude.json`, pass `--claude-settings-path <file>`. This only affects how the script reads existing entries and checks for duplicates. The `claude mcp` commands still write to Claude's own config.
+
 ### Manual fallback
 
 Use these steps if the script cannot run. Replace the placeholder values with your own.

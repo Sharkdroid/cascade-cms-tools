@@ -501,6 +501,13 @@ checkboxes, independent of assignment: check
 format", and match regions by `name` (their order changes on save). Assigning `structuredData` is a
 validator ERROR, and reading `._data["structuredData"]` is a warning.
 
+**No private attributes.** Never read or write a `_name` attribute on a
+library object (`asset._asset_type`, `asset._data` outside the accessor
+roots). The validator fails the script. Get an asset's type from the
+`IdentifierType` it was read or created with: `identifier.asset_type`.
+Read other fields through their public names. `self._helper` inside a
+script's own class is allowed.
+
 **UUIDs serialize as bare hex.** Cascade rejects dashed UUIDs, so
 `IdentifierType.identifier`, `NewAsset.site_id` and `NewAsset.parent_folder_id`
 emit `uuid.UUID.hex`. Pass real `uuid.UUID` objects and let the library format
